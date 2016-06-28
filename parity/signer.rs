@@ -16,6 +16,7 @@
 
 extern crate ansi_term;
 use self::ansi_term::Colour::White;
+use self::ansi_term::Style;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -60,6 +61,11 @@ fn codes_path(path: String) -> PathBuf {
 	p
 }
 
+#[cfg(windows)]
+fn paint(c: Style, t: String) -> String { t }
+
+#[cfg(not(windows))]
+fn paint(c: Style, t: String) -> String { format!("{}", c.paint(t)) }
 
 #[cfg(feature = "ethcore-signer")]
 pub fn new_token(path: String) -> io::Result<()> {
@@ -67,7 +73,7 @@ pub fn new_token(path: String) -> io::Result<()> {
 	let mut codes = try!(signer::AuthCodes::from_file(&path));
 	let code = try!(codes.generate_new());
 	try!(codes.to_file(&path));
-	println!("This key code will authorise your System Signer UI: {}", White.bold().paint(code));
+	println!("This key code will authorise your System Signer UI: {}", paint(White.bold(), code));
 	Ok(())
 }
 
