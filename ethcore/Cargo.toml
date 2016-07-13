@@ -27,7 +27,7 @@ crossbeam = "0.2.9"
 lazy_static = "0.2"
 ethcore-devtools = { path = "../devtools" }
 ethjson = { path = "../json" }
-bloomchain = "0.1"
+bloomchain = { path = "../bloomchain" }
 ethcore-ipc = { path = "../ipc/rpc" }
 rayon = "0.3.1"
 ethstore = { path = "../ethstore" }
