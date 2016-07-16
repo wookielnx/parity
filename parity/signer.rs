@@ -15,22 +15,18 @@
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
 use std::io;
-use std::path::PathBuf;
 use std::sync::Arc;
-use util::panics::{PanicHandler, ForwardPanic};
+use std::path::PathBuf;
+use ansi_term::Colour;
+use util::panics::{ForwardPanic, PanicHandler};
 use util::path::restrict_permissions_owner;
-use die::*;
 use rpc_apis;
-
-const CODES_FILENAME: &'static str = "authcodes";
-
-#[cfg(feature = "ethcore-signer")]
 use ethcore_signer as signer;
-#[cfg(feature = "ethcore-signer")]
+use die::*;
+
 pub use ethcore_signer::Server as SignerServer;
 
-#[cfg(not(feature = "ethcore-signer"))]
-pub struct SignerServer;
+const CODES_FILENAME: &'static str = "authcodes";
 
 pub struct Configuration {
 	pub enabled: bool,
@@ -58,19 +54,15 @@ fn codes_path(path: String) -> PathBuf {
 	p
 }
 
-
-#[cfg(feature = "ethcore-signer")]
 pub fn new_token(path: String) -> io::Result<()> {
 	let path = codes_path(path);
 	let mut codes = try!(signer::AuthCodes::from_file(&path));
 	let code = try!(codes.generate_new());
 	try!(codes.to_file(&path));
-	println!("New token has been generated. Copy the code below to your Signer UI:");
-	println!("{}", code);
+	info!("This key code will authorise your System Signer UI: {}", Colour::White.bold().paint(code));
 	Ok(())
 }
 
-#[cfg(feature = "ethcore-signer")]
 fn do_start(conf: Configuration, deps: Dependencies) -> SignerServer {
 	let addr = format!("127.0.0.1:{}", conf.port).parse().unwrap_or_else(|_| {
 		die!("Invalid port specified: {}", conf.port)
@@ -95,13 +87,4 @@ fn do_start(conf: Configuration, deps: Dependencies) -> SignerServer {
 	}
 }
 
-#[cfg(not(feature = "ethcore-signer"))]
-fn do_start(_conf: Configuration) -> ! {
-	die!("Your Parity version has been compiled without Trusted Signer support.")
-}
-
-#[cfg(not(feature = "ethcore-signer"))]
-pub fn new_token(_path: String) -> ! {
-	die!("Your Parity version has been compiled without Trusted Signer support.")
-}
 

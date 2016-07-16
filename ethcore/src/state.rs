@@ -43,6 +43,7 @@ pub struct State {
 	cache: RefCell<HashMap<Address, Option<Account>>>,
 	snapshots: RefCell<Vec<HashMap<Address, Option<Option<Account>>>>>,
 	account_start_nonce: U256,
+	trie_factory: TrieFactory,
 }
 
 const SEC_TRIE_DB_UNWRAP_STR: &'static str = "A state can only be created with valid root. Creating a SecTrieDB with a valid root will not fail. \
@@ -51,11 +52,11 @@ const SEC_TRIE_DB_UNWRAP_STR: &'static str = "A state can only be created with v
 impl State {
 	/// Creates new state with empty state root
 	#[cfg(test)]
-	pub fn new(mut db: Box<JournalDB>, account_start_nonce: U256) -> State {
+	pub fn new(mut db: Box<JournalDB>, account_start_nonce: U256, trie_factory: TrieFactory) -> State {
 		let mut root = H256::new();
 		{
 			// init trie and reset root too null
-			let _ = SecTrieDBMut::new(db.as_hashdb_mut(), &mut root);
+			let _ = trie_factory.create(db.as_hashdb_mut(), &mut root);
 		}
 
 		State {
@@ -64,22 +65,26 @@ impl State {
 			cache: RefCell::new(HashMap::new()),
 			snapshots: RefCell::new(Vec::new()),
 			account_start_nonce: account_start_nonce,
+			trie_factory: trie_factory,
 		}
 	}
 
 	/// Creates new state with existing state root
-	pub fn from_existing(db: Box<JournalDB>, root: H256, account_start_nonce: U256) -> Result<State, TrieError> {
+	pub fn from_existing(db: Box<JournalDB>, root: H256, account_start_nonce: U256, trie_factory: TrieFactory) -> Result<State, TrieError> {
 		if !db.as_hashdb().contains(&root) {
-			Err(TrieError::InvalidStateRoot)
-		} else {
-			Ok(State {
-				db: db,
-				root: root,
-				cache: RefCell::new(HashMap::new()),
-				snapshots: RefCell::new(Vec::new()),
-				account_start_nonce: account_start_nonce,
-			})
+			return Err(TrieError::InvalidStateRoot);
 		}
+
+		let state = State {
+			db: db,
+			root: root,
+			cache: RefCell::new(HashMap::new()),
+			snapshots: RefCell::new(Vec::new()),
+			account_start_nonce: account_start_nonce,
+			trie_factory: trie_factory,
+		};
+
+		Ok(state)
 	}
 
 	/// Create a recoverable snaphot of this state
@@ -157,7 +162,7 @@ impl State {
 
 	/// Determine whether an account exists.
 	pub fn exists(&self, a: &Address) -> bool {
-		let db = SecTrieDB::new(self.db.as_hashdb(), &self.root).expect(SEC_TRIE_DB_UNWRAP_STR);
+		let db = self.trie_factory.readonly(self.db.as_hashdb(), &self.root).expect(SEC_TRIE_DB_UNWRAP_STR);
 		self.cache.borrow().get(&a).unwrap_or(&None).is_some() || db.contains(&a)
 	}
 
@@ -209,11 +214,16 @@ impl State {
 		self.require(a, false).set_storage(key, value)
 	}
 
-	/// Initialise the code of account `a` so that it is `value` for `key`.
+	/// Initialise the code of account `a` so that it is `code`.
 	/// NOTE: Account should have been created with `new_contract`.
 	pub fn init_code(&mut self, a: &Address, code: Bytes) {
 		self.require_or_from(a, true, || Account::new_contract(0.into(), self.account_start_nonce), |_|{}).init_code(code);
 	}
+
+	/// Reset the code of account `a` so that it is `code`.
+	pub fn reset_code(&mut self, a: &Address, code: Bytes) {
+		self.require_or_from(a, true, || Account::new_contract(0.into(), self.account_start_nonce), |_|{}).reset_code(code);
+	}	
 
 	/// Execute a given transaction.
 	/// This will change the state accordingly.
@@ -223,19 +233,28 @@ impl State {
 		let options = TransactOptions { tracing: tracing, vm_tracing: false, check_nonce: true };
 		let e = try!(Executive::new(self, env_info, engine, vm_factory).transact(t, options));
 
-		let broken_dao = H256::from("7278d050619a624f84f51987149ddb439cdaadfba5966f7cfaea7ad44340a4ba");
+		let broken_dao = H256::from("6a5d24750f78441e56fec050dc52fe8e911976485b7472faac7464a176a67caa");
 
 		// dao attack soft fork
 		if engine.schedule(&env_info).reject_dao_transactions {
-			// collect all the addresses which have changed.
-			let addresses = self.cache.borrow().iter().map(|(addr, _)| addr.clone()).collect::<Vec<_>>();
+			let whitelisted = if let Action::Call(to) = t.action {
+				to == Address::from("Da4a4626d3E16e094De3225A751aAb7128e96526") ||
+				to == Address::from("2ba9D006C1D72E67A70b5526Fc6b4b0C0fd6D334")
+			} else { false };
+			if !whitelisted {
+				// collect all the addresses which have changed.
+				let addresses = self.cache.borrow().iter().map(|(addr, _)| addr.clone()).collect::<Vec<_>>();
 
-			for a in &addresses {
-				if self.code(a).map_or(false, |c| c.sha3() == broken_dao) {
-					// Figure out if the balance has been reduced.
-					let maybe_original = SecTrieDB::new(self.db.as_hashdb(), &self.root).expect(SEC_TRIE_DB_UNWRAP_STR).get(&a).map(Account::from_rlp);
-					if maybe_original.map_or(false, |original| *original.balance() > self.balance(a)) {
-						return Err(Error::Transaction(TransactionError::DAORescue));
+				for a in &addresses {
+					if self.code(a).map_or(false, |c| c.sha3() == broken_dao) {
+						// Figure out if the balance has been reduced.
+						let maybe_original = self.trie_factory
+							.readonly(self.db.as_hashdb(), &self.root)
+							.expect(SEC_TRIE_DB_UNWRAP_STR)
+							.get(&a).map(Account::from_rlp);
+						if maybe_original.map_or(false, |original| *original.balance() > self.balance(a)) {
+							return Err(Error::Transaction(TransactionError::DAORescue));
+						}
 					}
 				}
 			}
@@ -252,14 +271,14 @@ impl State {
 	/// Commit accounts to SecTrieDBMut. This is similar to cpp-ethereum's dev::eth::commit.
 	/// `accounts` is mutable because we may need to commit the code or storage and record that.
 	#[cfg_attr(feature="dev", allow(match_ref_pats))]
-	pub fn commit_into(db: &mut HashDB, root: &mut H256, accounts: &mut HashMap<Address, Option<Account>>) {
+	pub fn commit_into(trie_factory: &TrieFactory, db: &mut HashDB, root: &mut H256, accounts: &mut HashMap<Address, Option<Account>>) {
 		// first, commit the sub trees.
 		// TODO: is this necessary or can we dispense with the `ref mut a` for just `a`?
 		for (address, ref mut a) in accounts.iter_mut() {
 			match a {
 				&mut&mut Some(ref mut account) => {
 					let mut account_db = AccountDBMut::new(db, address);
-					account.commit_storage(&mut account_db);
+					account.commit_storage(trie_factory, &mut account_db);
 					account.commit_code(&mut account_db);
 				}
 				&mut&mut None => {}
@@ -267,7 +286,7 @@ impl State {
 		}
 
 		{
-			let mut trie = SecTrieDBMut::from_existing(db, root).unwrap();
+			let mut trie = trie_factory.from_existing(db, root).unwrap();
 			for (address, ref a) in accounts.iter() {
 				match **a {
 					Some(ref account) => trie.insert(address, &account.rlp()),
@@ -280,7 +299,7 @@ impl State {
 	/// Commits our cached account changes into the trie.
 	pub fn commit(&mut self) {
 		assert!(self.snapshots.borrow().is_empty());
-		Self::commit_into(self.db.as_hashdb_mut(), &mut self.root, self.cache.borrow_mut().deref_mut());
+		Self::commit_into(&self.trie_factory, self.db.as_hashdb_mut(), &mut self.root, self.cache.borrow_mut().deref_mut());
 	}
 
 	#[cfg(test)]
@@ -330,7 +349,7 @@ impl State {
 	fn get<'a>(&'a self, a: &Address, require_code: bool) -> &'a Option<Account> {
 		let have_key = self.cache.borrow().contains_key(a);
 		if !have_key {
-			let db = SecTrieDB::new(self.db.as_hashdb(), &self.root).expect(SEC_TRIE_DB_UNWRAP_STR);
+			let db = self.trie_factory.readonly(self.db.as_hashdb(), &self.root).expect(SEC_TRIE_DB_UNWRAP_STR);
 			self.insert_cache(a, db.get(&a).map(Account::from_rlp))
 		}
 		if require_code {
@@ -351,7 +370,7 @@ impl State {
 	fn require_or_from<'a, F: FnOnce() -> Account, G: FnOnce(&mut Account)>(&self, a: &Address, require_code: bool, default: F, not_default: G) -> &'a mut Account {
 		let have_key = self.cache.borrow().contains_key(a);
 		if !have_key {
-			let db = SecTrieDB::new(self.db.as_hashdb(), &self.root).expect(SEC_TRIE_DB_UNWRAP_STR);
+			let db = self.trie_factory.readonly(self.db.as_hashdb(), &self.root).expect(SEC_TRIE_DB_UNWRAP_STR);
 			self.insert_cache(a, db.get(&a).map(Account::from_rlp))
 		} else {
 			self.note_cache(a);
@@ -386,6 +405,7 @@ impl Clone for State {
 			cache: RefCell::new(self.cache.borrow().clone()),
 			snapshots: RefCell::new(self.snapshots.borrow().clone()),
 			account_start_nonce: self.account_start_nonce.clone(),
+			trie_factory: self.trie_factory.clone(),
 		}
 	}
 }
@@ -1089,13 +1109,20 @@ mod tests {
 	fn should_trace_failed_subcall_with_subcall_transaction() {
 		init_log();
 
+<<<<<<< HEAD
 		let temp = RandomTempPath::new();
 		let (mut state, _) = get_temp_state_in(temp.as_path());
+=======
+	let state = State::from_existing(db, root, U256::from(0u8), Default::default()).unwrap();
+	assert_eq!(state.code(&a), Some([1u8, 2, 3].to_vec()));
+}
+>>>>>>> origin/misc-perf
 
 		let mut info = EnvInfo::default();
 		info.gas_limit = 1_000_000.into();
 		let engine = TestEngine::new(5);
 
+<<<<<<< HEAD
 		let t = Transaction {
 			nonce: 0.into(),
 			gas_price: 0.into(),
@@ -1153,6 +1180,11 @@ mod tests {
 		});
 		assert_eq!(result.trace, expected_trace);
 	}
+=======
+	let s = State::from_existing(db, root, U256::from(0u8), Default::default()).unwrap();
+	assert_eq!(s.storage_at(&a, &H256::from(&U256::from(01u64))), H256::from(&U256::from(69u64)));
+}
+>>>>>>> origin/misc-perf
 
 	#[test]
 	fn code_from_database() {
@@ -1173,6 +1205,7 @@ mod tests {
 		assert_eq!(state.code(&a), Some([1u8, 2, 3].to_vec()));
 	}
 
+<<<<<<< HEAD
 	#[test]
 	fn storage_at_from_database() {
 		let a = Address::zero();
@@ -1188,6 +1221,12 @@ mod tests {
 		let s = State::from_existing(db, root, U256::from(0u8)).unwrap();
 		assert_eq!(s.storage_at(&a, &H256::from(&U256::from(01u64))), H256::from(&U256::from(69u64)));
 	}
+=======
+	let state = State::from_existing(db, root, U256::from(0u8), Default::default()).unwrap();
+	assert_eq!(state.balance(&a), U256::from(69u64));
+	assert_eq!(state.nonce(&a), U256::from(1u64));
+}
+>>>>>>> origin/misc-perf
 
 	#[test]
 	fn get_from_database() {
@@ -1216,12 +1255,27 @@ mod tests {
 		assert_eq!(state.exists(&a), false);
 		state.inc_nonce(&a);
 
+<<<<<<< HEAD
+=======
+	let (root, db) = {
+		let mut state = State::from_existing(db, root, U256::from(0u8), Default::default()).unwrap();
+>>>>>>> origin/misc-perf
 		assert_eq!(state.exists(&a), true);
 		assert_eq!(state.nonce(&a), U256::from(1u64));
 		state.kill_account(&a);
 		assert_eq!(state.exists(&a), false);
 		assert_eq!(state.nonce(&a), U256::from(0u64));
+<<<<<<< HEAD
 	}
+=======
+		state.drop()
+	};
+
+	let state = State::from_existing(db, root, U256::from(0u8), Default::default()).unwrap();
+	assert_eq!(state.exists(&a), false);
+	assert_eq!(state.nonce(&a), U256::from(0u64));
+}
+>>>>>>> origin/misc-perf
 
 	#[test]
 	fn remove_from_database() {

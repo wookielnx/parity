@@ -16,7 +16,12 @@
 
 //! `JournalDB` interface and implementation.
 
+<<<<<<< HEAD:db/src/journaldb/mod.rs
 use util::common::*;
+=======
+use common::*;
+use kvdb::DatabaseConfig;
+>>>>>>> origin/misc-perf:util/src/journaldb/mod.rs
 
 /// Export the journaldb module.
 pub mod traits;
@@ -58,7 +63,7 @@ pub enum Algorithm {
 }
 
 impl Default for Algorithm {
-	fn default() -> Algorithm { Algorithm::Archive }
+	fn default() -> Algorithm { Algorithm::OverlayRecent }
 }
 
 impl fmt::Display for Algorithm {
@@ -73,12 +78,21 @@ impl fmt::Display for Algorithm {
 }
 
 /// Create a new `JournalDB` trait object.
+<<<<<<< HEAD:db/src/journaldb/mod.rs
 pub fn new(man: Arc<DatabaseManager<QueuedDatabase>>, path: &str, algorithm: Algorithm) -> Box<JournalDB> {
 	match algorithm {
 		Algorithm::Archive => Box::new(archivedb::ArchiveDB::new(man, path)),
 		Algorithm::EarlyMerge => Box::new(earlymergedb::EarlyMergeDB::new(man, path)),
 		Algorithm::OverlayRecent => Box::new(overlayrecentdb::OverlayRecentDB::new(man, path)),
 		Algorithm::RefCounted => Box::new(refcounteddb::RefCountedDB::new(man, path)),
+=======
+pub fn new(path: &str, algorithm: Algorithm, config: DatabaseConfig) -> Box<JournalDB> {
+	match algorithm {
+		Algorithm::Archive => Box::new(archivedb::ArchiveDB::new(path, config)),
+		Algorithm::EarlyMerge => Box::new(earlymergedb::EarlyMergeDB::new(path, config)),
+		Algorithm::OverlayRecent => Box::new(overlayrecentdb::OverlayRecentDB::new(path, config)),
+		Algorithm::RefCounted => Box::new(refcounteddb::RefCountedDB::new(path, config)),
+>>>>>>> origin/misc-perf:util/src/journaldb/mod.rs
 	}
 }
 

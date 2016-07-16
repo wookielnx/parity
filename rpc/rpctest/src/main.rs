@@ -137,7 +137,7 @@ impl Configuration {
 			panic_handler.on_panic(move |_reason| { e.notify_all(); });
 
 			let mutex = Mutex::new(());
-			let _ = exit.wait(mutex.lock().unwrap()).unwrap();
+			let _ = exit.wait(mutex.lock()).unwrap();
 		}
 
 	}

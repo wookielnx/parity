@@ -19,8 +19,9 @@
 use util::bytes::Populatable;
 use util::numbers::{U256, U512, H256, H2048, Address};
 use std::mem;
-use std::collections::VecDeque;
+use std::collections::{VecDeque, BTreeMap};
 use std::ops::Range;
+use super::Handshake;
 
 #[derive(Debug)]
 pub struct BinaryConvertError;
@@ -139,6 +140,92 @@ impl<R: BinaryConvertable, E: BinaryConvertable> BinaryConvertable for Result<R,
 	}
 }
 
+impl<K, V> BinaryConvertable for BTreeMap<K, V> where K : BinaryConvertable + Ord, V: BinaryConvertable {
+	fn size(&self) -> usize {
+		0usize + match K::len_params() {
+			0 => mem::size_of::<K>() * self.len(),
+			_ => self.iter().fold(0usize, |acc, (k, _)| acc + k.size())
+		} + match V::len_params() {
+			0 => mem::size_of::<V>() * self.len(),
+			_ => self.iter().fold(0usize, |acc, (_, v)| acc + v.size())
+		}
+	}
+
+	fn to_bytes(&self, buffer: &mut [u8], length_stack: &mut VecDeque<usize>) -> Result<(), BinaryConvertError> {
+		let mut offset = 0usize;
+		for (key, val) in self.iter() {
+			let key_size = match K::len_params() {
+				0 => mem::size_of::<K>(),
+				_ => { let size = key.size(); length_stack.push_back(size); size }
+			};
+			let val_size = match K::len_params() {
+				0 => mem::size_of::<V>(),
+				_ => { let size = val.size(); length_stack.push_back(size); size }
+			};
+
+			if key_size > 0 {
+				let item_end = offset + key_size;
+				try!(key.to_bytes(&mut buffer[offset..item_end], length_stack));
+				offset = item_end;
+			}
+
+			if val_size > 0 {
+				let item_end = offset + key_size;
+				try!(val.to_bytes(&mut buffer[offset..item_end], length_stack));
+				offset = item_end;
+			}
+		}
+		Ok(())
+	}
+
+	fn from_bytes(buffer: &[u8], length_stack: &mut VecDeque<usize>) -> Result<Self, BinaryConvertError> {
+		let mut index = 0;
+		let mut result = Self::new();
+
+		if buffer.len() == 0 { return Ok(result); }
+
+		loop {
+			let key_size = match K::len_params() {
+				0 => mem::size_of::<K>(),
+				_ => try!(length_stack.pop_front().ok_or(BinaryConvertError)),
+			};
+			let key = if key_size == 0 {
+				try!(K::from_empty_bytes())
+			} else {
+				try!(K::from_bytes(&buffer[index..index+key_size], length_stack))
+			};
+			index = index + key_size;
+
+			let val_size = match V::len_params() {
+				0 => mem::size_of::<V>(),
+				_ => try!(length_stack.pop_front().ok_or(BinaryConvertError)),
+			};
+			let val = if val_size == 0 {
+				try!(V::from_empty_bytes())
+			} else {
+				try!(V::from_bytes(&buffer[index..index+val_size], length_stack))
+			};
+			result.insert(key, val);
+			index = index + val_size;
+
+			if index == buffer.len() { break; }
+			if index > buffer.len() {
+				return Err(BinaryConvertError)
+			}
+		}
+
+		Ok(result)
+	}
+
+	fn from_empty_bytes() -> Result<Self, BinaryConvertError> {
+		Ok(Self::new())
+	}
+
+	fn len_params() -> usize {
+		1
+	}
+}
+
 impl<T> BinaryConvertable for Vec<T> where T: BinaryConvertable {
 	fn size(&self) -> usize {
 		match T::len_params() {
@@ -226,6 +313,31 @@ impl BinaryConvertable for String {
 
 	fn len_params() -> usize {
 		1
+	}
+}
+
+impl<T> BinaryConvertable for Range<T> where T: BinaryConvertable {
+	fn size(&self) -> usize {
+		mem::size_of::<T>() * 2
+	}
+
+	fn from_empty_bytes() -> Result<Self, BinaryConvertError> {
+		Err(BinaryConvertError)
+	}
+
+	fn to_bytes(&self, buffer: &mut[u8], length_stack: &mut VecDeque<usize>) -> Result<(), BinaryConvertError> {
+		try!(self.start.to_bytes(&mut buffer[..mem::size_of::<T>()], length_stack));
+		try!(self.end.to_bytes(&mut buffer[mem::size_of::<T>() + 1..], length_stack));
+		Ok(())
+	}
+
+	fn from_bytes(buffer: &[u8], length_stack: &mut VecDeque<usize>) -> Result<Self, BinaryConvertError> {
+		Ok(try!(T::from_bytes(&buffer[..mem::size_of::<T>()], length_stack))..try!(T::from_bytes(&buffer[mem::size_of::<T>()+1..], length_stack)))
+	}
+
+	fn len_params() -> usize {
+		assert_eq!(0, T::len_params());
+		0
 	}
 }
 
@@ -443,6 +555,62 @@ macro_rules! binary_fixed_size {
 	}
 }
 
+/// Fixed-sized version of Handshake struct
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BinHandshake {
+	api_version: BinVersion,
+	protocol_version: BinVersion,
+}
+
+/// Shorten version of semver Version without `pre` and `build` information
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BinVersion {
+	pub major: u64,
+	pub minor: u64,
+	pub patch: u64,
+}
+
+impl From<Handshake> for BinHandshake {
+	fn from(other: Handshake) -> Self {
+		BinHandshake {
+			api_version: BinVersion::from(other.api_version),
+			protocol_version: BinVersion::from(other.protocol_version),
+		}
+	}
+}
+
+impl BinHandshake {
+	pub fn to_semver(self) -> Handshake {
+		Handshake {
+			api_version: self.api_version.to_semver(),
+			protocol_version: self.protocol_version.to_semver(),
+		}
+	}
+}
+
+impl BinVersion {
+	pub fn to_semver(self) -> ::semver::Version {
+		::semver::Version {
+			major: self.major,
+			minor: self.minor,
+			patch: self.patch,
+			pre: vec![],
+			build: vec![],
+		}
+	}
+}
+
+impl From<::semver::Version> for BinVersion {
+	fn from(other: ::semver::Version) -> Self {
+ 		BinVersion {
+			major: other.major,
+			minor: other.minor,
+			patch: other.patch,
+		}
+	}
+}
+
+binary_fixed_size!(u16);
 binary_fixed_size!(u64);
 binary_fixed_size!(u32);
 binary_fixed_size!(usize);
@@ -453,8 +621,7 @@ binary_fixed_size!(U512);
 binary_fixed_size!(H256);
 binary_fixed_size!(H2048);
 binary_fixed_size!(Address);
-binary_fixed_size!(Range<usize>);
-binary_fixed_size!(Range<u64>);
+binary_fixed_size!(BinHandshake);
 
 #[test]
 fn vec_serialize() {
@@ -597,8 +764,6 @@ fn serialize_opt_vec() {
 
 #[test]
 fn serialize_opt_vec_payload() {
- 	use std::io::Cursor;
-
 	let optional_vec: Option<Vec<u8>> = None;
 	let payload = serialize(&optional_vec).unwrap();
 
@@ -651,4 +816,39 @@ fn serialize_err_opt_vec_in_out() {
 	let vec = deserialize_from::<Result<Option<Vec<u8>>, u32>, _>(&mut buff).unwrap();
 
 	assert!(vec.is_ok());
+}
+
+#[test]
+fn serialize_btree() {
+	use std::io::{Cursor, SeekFrom, Seek};
+
+	let mut buff = Cursor::new(Vec::new());
+	let mut btree = BTreeMap::new();
+	btree.insert(1u64, 5u64);
+	serialize_into(&btree, &mut buff).unwrap();
+
+	buff.seek(SeekFrom::Start(0)).unwrap();
+	let res = deserialize_from::<BTreeMap<u64, u64>, _>(&mut buff).unwrap();
+
+	assert_eq!(res[&1u64], 5u64);
+}
+
+#[test]
+fn serialize_handshake() {
+	use std::io::{Cursor, SeekFrom, Seek};
+
+	let mut buff = Cursor::new(Vec::new());
+
+	let handshake = Handshake {
+		api_version: ::semver::Version::parse("1.2.0").unwrap(),
+		protocol_version: ::semver::Version::parse("1.2.0").unwrap(),
+	};
+
+	serialize_into(&BinHandshake::from(handshake.clone()), &mut buff).unwrap();
+
+	buff.seek(SeekFrom::Start(0)).unwrap();
+	let res = deserialize_from::<BinHandshake, _>(&mut buff).unwrap().to_semver();
+
+	assert_eq!(res, handshake);
+
 }

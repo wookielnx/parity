@@ -19,10 +19,11 @@ mod tests {
 
 	use super::super::service::*;
 	use super::super::binary::*;
-	use super::super::nested::{DBClient,DBWriter};
+	use super::super::nested::{DBClient, DBWriter};
 	use ipc::*;
 	use devtools::*;
 	use semver::Version;
+	use std::sync::Arc;
 
 	#[test]
 	fn call_service() {
@@ -33,7 +34,7 @@ mod tests {
 			4, 0, 0, 0, 0, 0, 0, 0,
 			10, 0, 0, 0]);
 
-		let service = Service::new();
+		let service = Arc::new(Service::new());
 		assert_eq!(0, *service.commits.read().unwrap());
 
 		service.dispatch(&mut socket);
@@ -65,7 +66,7 @@ mod tests {
 				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 			]);
 
-		let service = Service::new();
+		let service = Arc::new(Service::new());
 		let result = service.dispatch(&mut socket);
 
 		// single `true`
@@ -86,7 +87,7 @@ mod tests {
 				0, 0, 0, 0, 0, 0, 0, 0,
 				4, 0, 0, 0, 0, 0, 0, 0,
 				5, 0, 0, 0],
-			service_client.socket().borrow().write_buffer.clone());
+			service_client.socket().write().unwrap().write_buffer.clone());
 		assert_eq!(10, result);
 	}
 
@@ -103,15 +104,15 @@ mod tests {
 			1, 0, 0, 0, 0, 0, 0, 0,
 			4, 0, 0, 0, 0, 0, 0, 0,
 			8, 0, 0, 0, 0, 0, 0, 0,
-			5, 0, 0, 0, 10, 0, 0, 0], service_client.socket().borrow().write_buffer.clone());
+			5, 0, 0, 0, 10, 0, 0, 0], service_client.socket().write().unwrap().write_buffer.clone());
 		assert_eq!(10, result);
 	}
 
 	#[test]
 	fn query_default_version() {
-		let ver = Service::protocol_version();
+		let ver = Arc::<Service>::protocol_version();
 		assert_eq!(ver, Version::parse("1.0.0").unwrap());
-		let ver = Service::api_version();
+		let ver = Arc::<Service>::api_version();
 		assert_eq!(ver, Version::parse("1.0.0").unwrap());
 	}
 
@@ -145,7 +146,7 @@ mod tests {
 			// items
 			3, 0, 0, 0, 0, 0, 0, 0,
 			11, 0, 0, 0, 0, 0, 0, 0],
-			service_client.socket().borrow().write_buffer.clone());
+			service_client.socket().write().unwrap().write_buffer.clone());
 		assert_eq!(true, result);
 	}
 
@@ -189,5 +190,21 @@ mod tests {
 		let new_struct: DoubleRoot = ::ipc::binary::deserialize_from(&mut read_socket).unwrap();
 
 		assert_eq!(struct_, new_struct);
+	}
+
+	#[test]
+	fn can_call_void_method() {
+		let mut socket = TestSocket::new();
+		socket.read_buffer = vec![1];
+		let service_client = ServiceClient::init(socket);
+
+		service_client.void(99);
+
+		assert_eq!(vec![
+			0, 19,
+			0, 0, 0, 0, 0, 0, 0, 0,
+			8, 0, 0, 0, 0, 0, 0, 0,
+			99, 0, 0, 0, 0, 0, 0, 0],
+			service_client.socket().write().unwrap().write_buffer.clone());
 	}
 }

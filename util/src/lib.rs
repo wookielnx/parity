@@ -108,7 +108,6 @@ extern crate secp256k1;
 extern crate arrayvec;
 extern crate elastic_array;
 extern crate crossbeam;
-extern crate serde;
 #[macro_use]
 extern crate log as rlog;
 extern crate igd;
@@ -117,6 +116,10 @@ extern crate libc;
 extern crate target_info;
 extern crate bigint;
 extern crate chrono;
+extern crate parking_lot;
+pub extern crate using_queue;
+pub extern crate table;
+extern crate ansi_term;
 
 pub mod standard;
 #[macro_use]
@@ -129,8 +132,6 @@ pub mod hash;
 pub mod bytes;
 pub mod rlp;
 pub mod misc;
-pub mod using_queue;
-mod json_aid;
 pub mod vector;
 pub mod sha3;
 pub mod hashdb;
@@ -142,21 +143,20 @@ pub mod crypto;
 pub mod triehash;
 pub mod trie;
 pub mod nibbleslice;
+pub mod nibblevec;
 mod heapsizeof;
-pub mod squeeze;
 pub mod semantic_version;
 pub mod io;
 pub mod network;
 pub mod log;
 pub mod panics;
-pub mod table;
 pub mod network_settings;
 pub mod path;
+pub mod snappy;
+mod timer;
 
 pub use common::*;
 pub use misc::*;
-pub use using_queue::*;
-pub use json_aid::*;
 pub use rlp::*;
 pub use hashdb::*;
 pub use memorydb::*;
@@ -165,12 +165,12 @@ pub use crypto::*;
 pub use triehash::*;
 pub use trie::*;
 pub use nibbleslice::*;
-pub use squeeze::*;
 pub use semantic_version::*;
 pub use network::*;
 pub use io::*;
 pub use log::*;
 pub use kvdb::*;
+pub use timer::*;
 
 #[cfg(test)]
 mod tests {

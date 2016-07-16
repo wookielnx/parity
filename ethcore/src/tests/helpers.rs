@@ -17,7 +17,7 @@
 use client::{BlockChainClient, Client, ClientConfig};
 use common::*;
 use spec::*;
-use block::{OpenBlock};
+use block::{OpenBlock, Drain};
 use blockchain::{BlockChain, Config as BlockChainConfig};
 use state::*;
 use evm::Schedule;
@@ -35,6 +35,7 @@ pub enum ChainEra {
 	Homestead,
 }
 
+<<<<<<< HEAD
 #[cfg(test)]
 pub struct GuardedTempResult<T> {
 	result: Option<T>,
@@ -56,6 +57,8 @@ impl<T> GuardedTempResult<T> {
 	}
 }
 
+=======
+>>>>>>> origin/misc-perf
 pub struct TestEngine {
 	engine: Box<Engine>,
 	max_depth: usize
@@ -156,7 +159,11 @@ pub fn generate_dummy_client_with_spec_and_data<F>(get_test_spec: F, block_numbe
 	let (man, stop) = manager::run_manager();
 
 	let test_spec = get_test_spec();
+<<<<<<< HEAD
 	let client = Client::new(ClientConfig::default(), get_test_spec(),  man, dir.as_path(), Arc::new(Miner::default()), IoChannel::disconnected()).unwrap();
+=======
+	let client = Client::new(ClientConfig::default(), get_test_spec(), dir.as_path(), Arc::new(Miner::with_spec(get_test_spec())), IoChannel::disconnected()).unwrap();
+>>>>>>> origin/misc-perf
 	let test_engine = &test_spec.engine;
 
 	let mut db_result = get_temp_journal_db();
@@ -180,12 +187,13 @@ pub fn generate_dummy_client_with_spec_and_data<F>(get_test_spec: F, block_numbe
 		let mut b = OpenBlock::new(
 			test_engine.deref(),
 			&vm_factory,
+			Default::default(),
 			false,
 			db,
 			&last_header,
 			last_hashes.clone(),
 			author.clone(),
-			3141562.into(),
+			(3141562.into(), 31415620.into()),
 			vec![]
 		).unwrap();
 		b.set_difficulty(U256::from(0x20000));
@@ -255,9 +263,13 @@ pub fn push_blocks_to_client(client: &Arc<Client>, timestamp_salt: u64, starting
 
 pub fn get_test_client_with_blocks(blocks: Vec<Bytes>) -> GuardedTempResult<Arc<Client>> {
 	let dir = RandomTempPath::new();
+<<<<<<< HEAD
 	let (man, stop) = manager::run_manager();
 
 	let client = Client::new(ClientConfig::default(), get_test_spec(), man, dir.as_path(), Arc::new(Miner::default()), IoChannel::disconnected()).unwrap();
+=======
+	let client = Client::new(ClientConfig::default(), get_test_spec(), dir.as_path(), Arc::new(Miner::with_spec(get_test_spec())), IoChannel::disconnected()).unwrap();
+>>>>>>> origin/misc-perf
 	for block in &blocks {
 		if let Err(_) = client.import_block(block.clone()) {
 			panic!("panic importing block which is well-formed");
@@ -314,8 +326,12 @@ pub fn generate_dummy_empty_blockchain() -> GuardedTempResult<BlockChain> {
 
 pub fn get_temp_journal_db() -> GuardedTempResult<Box<JournalDB>> {
 	let temp = RandomTempPath::new();
+<<<<<<< HEAD
 	let (man, stop) = manager::run_manager();
 	let journal_db = journaldb::new(man, temp.as_str(), journaldb::Algorithm::EarlyMerge);
+=======
+	let journal_db = journaldb::new(temp.as_str(), journaldb::Algorithm::EarlyMerge, DatabaseConfig::default());
+>>>>>>> origin/misc-perf
 	GuardedTempResult {
 		_temp: temp,
 		_stop: Some(stop),
@@ -328,6 +344,7 @@ pub fn get_temp_state() -> GuardedTempResult<State> {
 	let (journal_db, stop) = get_temp_journal_db_in(temp.as_path());
 	GuardedTempResult {
 	    _temp: temp,
+<<<<<<< HEAD
 		_stop: Some(stop),
 		result: Some(State::new(journal_db, U256::from(0u8)))
 	}
@@ -341,6 +358,19 @@ pub fn get_temp_journal_db_in(path: &Path) -> (Box<JournalDB>, StopGuard) {
 pub fn get_temp_state_in(path: &Path) -> (State, StopGuard) {
 	let (journal_db, stop) = get_temp_journal_db_in(path);
 	(State::new(journal_db, U256::from(0u8)), stop)
+=======
+		result: Some(State::new(journal_db, U256::from(0), Default::default())),
+	}
+}
+
+pub fn get_temp_journal_db_in(path: &Path) -> Box<JournalDB> {
+	journaldb::new(path.to_str().unwrap(), journaldb::Algorithm::EarlyMerge, DatabaseConfig::default())
+}
+
+pub fn get_temp_state_in(path: &Path) -> State {
+	let journal_db = get_temp_journal_db_in(path);
+	State::new(journal_db, U256::from(0), Default::default())
+>>>>>>> origin/misc-perf
 }
 
 pub fn get_good_dummy_block_seq(count: usize) -> Vec<Bytes> {

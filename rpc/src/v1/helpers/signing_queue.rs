@@ -16,11 +16,11 @@
 
 use std::thread;
 use std::time::{Instant, Duration};
-use std::sync::{mpsc, Mutex, RwLock, Arc};
+use std::sync::{mpsc, Arc};
 use std::collections::HashMap;
-use v1::types::{TransactionRequest, TransactionConfirmation};
-use util::U256;
 use jsonrpc_core;
+use util::{Mutex, RwLock, U256};
+use v1::helpers::{TransactionRequest, TransactionConfirmation};
 
 /// Result that can be returned from JSON RPC.
 pub type RpcResult = Result<jsonrpc_core::Value, jsonrpc_core::Error>;
@@ -69,6 +69,12 @@ pub trait SigningQueue: Send + Sync {
 
 	/// Return copy of all the requests in the queue.
 	fn requests(&self) -> Vec<TransactionConfirmation>;
+
+	/// Returns number of transactions awaiting confirmation.
+	fn len(&self) -> usize;
+
+	/// Returns true if there are no transactions awaiting confirmation.
+	fn is_empty(&self) -> bool;
 }
 
 #[derive(Debug, PartialEq)]
@@ -104,7 +110,7 @@ pub struct ConfirmationPromise {
 impl ConfirmationToken {
 	/// Submit solution to all listeners
 	fn resolve(&self, result: Option<RpcResult>) {
-		let mut res = self.result.lock().unwrap();
+		let mut res = self.result.lock();
 		*res = result.map_or(ConfirmationResult::Rejected, |h| ConfirmationResult::Confirmed(h));
 		// Notify listener
 		self.handle.unpark();
@@ -136,7 +142,7 @@ impl ConfirmationPromise {
 			// Park thread (may wake up spuriously)
 			thread::park_timeout(deadline - now);
 			// Take confirmation result
-			let res = self.result.lock().unwrap();
+			let res = self.result.lock();
 			// Check the result
 			match *res {
 				ConfirmationResult::Rejected => return None,
@@ -177,7 +183,7 @@ impl ConfirmationsQueue {
 	/// This method can be used only once (only single consumer of events can exist).
 	pub fn start_listening<F>(&self, listener: F) -> Result<(), QueueError>
 		where F: Fn(QueueEvent) -> () {
-		let recv = self.receiver.lock().unwrap().take();
+		let recv = self.receiver.lock().take();
 		if let None = recv {
 			return Err(QueueError::AlreadyUsed);
 		}
@@ -202,13 +208,13 @@ impl ConfirmationsQueue {
 	/// Notifies receiver about the event happening in this queue.
 	fn notify(&self, message: QueueEvent) {
 		// We don't really care about the result
-		let _ = self.sender.lock().unwrap().send(message);
+		let _ = self.sender.lock().send(message);
 	}
 
 	/// Removes transaction from this queue and notifies `ConfirmationPromise` holders about the result.
 	/// Notifies also a receiver about that event.
 	fn remove(&self, id: U256, result: Option<RpcResult>) -> Option<TransactionConfirmation> {
-		let token = self.queue.write().unwrap().remove(&id);
+		let token = self.queue.write().remove(&id);
 
 		if let Some(token) = token {
 			// notify receiver about the event
@@ -235,13 +241,13 @@ impl SigningQueue for  ConfirmationsQueue {
 	fn add_request(&self, transaction: TransactionRequest) -> ConfirmationPromise {
 		// Increment id
 		let id = {
-			let mut last_id = self.id.lock().unwrap();
+			let mut last_id = self.id.lock();
 			*last_id = *last_id + U256::from(1);
 			*last_id
 		};
 		// Add request to queue
 		let res = {
-			let mut queue = self.queue.write().unwrap();
+			let mut queue = self.queue.write();
 			queue.insert(id, ConfirmationToken {
 				result: Arc::new(Mutex::new(ConfirmationResult::Waiting)),
 				handle: thread::current(),
@@ -260,7 +266,7 @@ impl SigningQueue for  ConfirmationsQueue {
 	}
 
 	fn peek(&self, id: &U256) -> Option<TransactionConfirmation> {
-		self.queue.read().unwrap().get(id).map(|token| token.request.clone())
+		self.queue.read().get(id).map(|token| token.request.clone())
 	}
 
 	fn request_rejected(&self, id: U256) -> Option<TransactionConfirmation> {
@@ -274,8 +280,18 @@ impl SigningQueue for  ConfirmationsQueue {
 	}
 
 	fn requests(&self) -> Vec<TransactionConfirmation> {
-		let queue = self.queue.read().unwrap();
+		let queue = self.queue.read();
 		queue.values().map(|token| token.request.clone()).collect()
+	}
+
+	fn len(&self) -> usize {
+		let queue = self.queue.read();
+		queue.len()
+	}
+
+	fn is_empty(&self) -> bool {
+		let queue = self.queue.read();
+		queue.is_empty()
 	}
 }
 
@@ -284,11 +300,10 @@ impl SigningQueue for  ConfirmationsQueue {
 mod test {
 	use std::time::Duration;
 	use std::thread;
-	use std::sync::{Arc, Mutex};
-	use util::hash::Address;
-	use util::numbers::{U256, H256};
-	use v1::types::TransactionRequest;
-	use super::*;
+	use std::sync::Arc;
+	use util::{Address, U256, H256, Mutex};
+	use v1::helpers::{SigningQueue, ConfirmationsQueue, QueueEvent, TransactionRequest};
+	use v1::types::H256 as NH256;
 	use jsonrpc_core::to_value;
 
 	fn request() -> TransactionRequest {
@@ -321,10 +336,10 @@ mod test {
 			// Just wait for the other thread to start
 			thread::sleep(Duration::from_millis(100));
 		}
-		queue.request_confirmed(id, to_value(&H256::from(1)));
+		queue.request_confirmed(id, to_value(&NH256::from(H256::from(1))));
 
 		// then
-		assert_eq!(handle.join().expect("Thread should finish nicely"), to_value(&H256::from(1)));
+		assert_eq!(handle.join().expect("Thread should finish nicely"), to_value(&NH256::from(H256::from(1))));
 	}
 
 	#[test]
@@ -339,7 +354,7 @@ mod test {
 		let r = received.clone();
 		let handle = thread::spawn(move || {
 			q.start_listening(move |notification| {
-				let mut v = r.lock().unwrap();
+				let mut v = r.lock();
 				*v = Some(notification);
 			}).expect("Should be closed nicely.")
 		});
@@ -348,7 +363,7 @@ mod test {
 
 		// then
 		handle.join().expect("Thread should finish nicely");
-		let r = received.lock().unwrap().take();
+		let r = received.lock().take();
 		assert_eq!(r, Some(QueueEvent::NewRequest(U256::from(1))));
 	}
 

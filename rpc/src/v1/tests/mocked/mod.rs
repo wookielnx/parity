@@ -24,4 +24,6 @@ mod web3;
 mod personal;
 mod personal_signer;
 mod ethcore;
+mod ethcore_set;
 mod rpc;
+mod manage_network;

@@ -17,6 +17,7 @@
 //! rpc integration tests.
 use std::sync::Arc;
 use std::str::FromStr;
+use std::time::Duration;
 
 use ethcore::client::{BlockChainClient, Client, ClientConfig};
 use ethcore::ids::BlockID;
@@ -24,16 +25,21 @@ use ethcore::spec::{Genesis, Spec};
 use ethcore::block::Block;
 use ethcore::views::BlockView;
 use ethcore::ethereum;
+<<<<<<< HEAD
 use ethcore::miner::{MinerService, ExternalMiner, Miner};
 use devtools::*;
+=======
+use ethcore::miner::{MinerOptions, GasPricer, MinerService, ExternalMiner, Miner, PendingSet};
+>>>>>>> origin/misc-perf
 use ethcore::account_provider::AccountProvider;
 use util::Hashable;
 use util::io::IoChannel;
-use util::{U256, H256};
+use util::{U256, H256, Uint};
 use jsonrpc_core::IoHandler;
 use ethjson::blockchain::BlockChain;
 use ethdb;
 
+use v1::types::U256 as NU256;
 use v1::traits::eth::{Eth, EthSigning};
 use v1::impls::{EthClient, EthSigningUnsafeClient};
 use v1::tests::helpers::{TestSyncProvider, Config};
@@ -50,7 +56,23 @@ fn sync_provider() -> Arc<TestSyncProvider> {
 }
 
 fn miner_service(spec: Spec, accounts: Arc<AccountProvider>) -> Arc<Miner> {
-	Miner::with_accounts(true, spec, accounts)
+	Miner::new(
+		MinerOptions {
+			new_work_notify: vec![],
+			force_sealing: true,
+			reseal_on_external_tx: true,
+			reseal_on_own_tx: true,
+			tx_queue_size: 1024,
+			tx_gas_limit: !U256::zero(),
+			pending_set: PendingSet::SealingOrElseQueue,
+			reseal_min_period: Duration::from_secs(0),
+			work_queue_size: 50,
+			enable_resubmission: true,
+		},
+		GasPricer::new_fixed(20_000_000_000u64.into()),
+		spec,
+		Some(accounts)
+	)
 }
 
 fn make_spec(chain: &BlockChain) -> Spec {
@@ -317,7 +339,7 @@ fn verify_transaction_counts(name: String, chain: BlockChain) {
 			"jsonrpc": "2.0",
 			"method": "eth_getBlockTransactionCountByNumber",
 			"params": [
-				"#.to_owned() + &::serde_json::to_string(&U256::from(num)).unwrap() + r#"
+				"#.to_owned() + &::serde_json::to_string(&NU256::from(num)).unwrap() + r#"
 			],
 			"id": "# + format!("{}", *id).as_ref() + r#"
 		}"#;

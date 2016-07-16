@@ -298,6 +298,7 @@ mod tests {
 	use evm::{Ext};
 	use substate::*;
 	use tests::helpers::*;
+	use devtools::GuardedTempResult;
 	use super::*;
 	use trace::{NoopTracer, NoopVMTracer};
 
@@ -318,7 +319,7 @@ mod tests {
 			difficulty: 0.into(),
 			last_hashes: vec![],
 			gas_used: 0.into(),
-			gas_limit: 0.into()
+			gas_limit: 0.into(),
 		}
 	}
 

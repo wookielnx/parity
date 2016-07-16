@@ -54,9 +54,16 @@ const PADDING : [u8; 10] = [ 0u8; 10 ];
 
 impl RefCountedDB {
 	/// Create a new instance given a `backing` database.
+<<<<<<< HEAD:db/src/journaldb/refcounteddb.rs
 	pub fn new(man: Arc<DatabaseManager<QueuedDatabase>>, path: &str) -> RefCountedDB {
 		let backing = man.open(QueuedDatabase::JournalDB, path, DatabaseConfig::with_prefix(DB_PREFIX_LEN)).unwrap_or_else(|e| {
 			panic!("Error opening state db: {:?}", e);
+=======
+	pub fn new(path: &str, config: DatabaseConfig) -> RefCountedDB {
+		let opts = config.prefix(DB_PREFIX_LEN);
+		let backing = Database::open(&opts, path).unwrap_or_else(|e| {
+			panic!("Error opening state db: {}", e);
+>>>>>>> origin/misc-perf:util/src/journaldb/refcounteddb.rs
 		});
 		if !backing.is_empty().unwrap() {
 			match backing.get(&VERSION_KEY).map(|d| d.map(|v| decode::<u32>(&v))) {
@@ -84,17 +91,21 @@ impl RefCountedDB {
 		let (man, stop_guard) = manager::run_manager();
 		let mut dir = env::temp_dir();
 		dir.push(H32::random().hex());
+<<<<<<< HEAD:db/src/journaldb/refcounteddb.rs
 		(Self::new(man, dir.to_str().unwrap()), stop_guard)
+=======
+		Self::new(dir.to_str().unwrap(), DatabaseConfig::default())
+>>>>>>> origin/misc-perf:util/src/journaldb/refcounteddb.rs
 	}
 }
 
 impl HashDB for RefCountedDB {
 	fn keys(&self) -> HashMap<H256, i32> { self.forward.keys() }
-	fn lookup(&self, key: &H256) -> Option<&[u8]> { self.forward.lookup(key) }
-	fn exists(&self, key: &H256) -> bool { self.forward.exists(key) }
+	fn get(&self, key: &H256) -> Option<&[u8]> { self.forward.get(key) }
+	fn contains(&self, key: &H256) -> bool { self.forward.contains(key) }
 	fn insert(&mut self, value: &[u8]) -> H256 { let r = self.forward.insert(value); self.inserts.push(r.clone()); r }
 	fn emplace(&mut self, key: H256, value: Bytes) { self.inserts.push(key.clone()); self.forward.emplace(key, value); }
-	fn kill(&mut self, key: &H256) { self.removes.push(key.clone()); }
+	fn remove(&mut self, key: &H256) { self.removes.push(key.clone()); }
 }
 
 impl JournalDB for RefCountedDB {
@@ -118,7 +129,15 @@ impl JournalDB for RefCountedDB {
 
 	fn latest_era(&self) -> Option<u64> { self.latest_era }
 
+<<<<<<< HEAD:db/src/journaldb/refcounteddb.rs
 	fn commit(&mut self, now: u64, id: &H256, end: Option<(u64, H256)>) -> Result<u32, Error> {
+=======
+	fn state(&self, id: &H256) -> Option<Bytes> {
+		self.backing.get_by_prefix(&id[0..DB_PREFIX_LEN]).map(|b| b.to_vec())
+	}
+
+	fn commit(&mut self, now: u64, id: &H256, end: Option<(u64, H256)>) -> Result<u32, UtilError> {
+>>>>>>> origin/misc-perf:util/src/journaldb/refcounteddb.rs
 		// journal format:
 		// [era, 0] => [ id, [insert_0, ...], [remove_0, ...] ]
 		// [era, 1] => [ id, [insert_0, ...], [remove_0, ...] ]
@@ -215,16 +234,16 @@ mod tests {
 
 		let h = jdb.insert(b"foo");
 		jdb.commit(0, &b"0".sha3(), None).unwrap();
-		assert!(jdb.exists(&h));
+		assert!(jdb.contains(&h));
 		jdb.remove(&h);
 		jdb.commit(1, &b"1".sha3(), None).unwrap();
-		assert!(jdb.exists(&h));
+		assert!(jdb.contains(&h));
 		jdb.commit(2, &b"2".sha3(), None).unwrap();
-		assert!(jdb.exists(&h));
+		assert!(jdb.contains(&h));
 		jdb.commit(3, &b"3".sha3(), Some((0, b"0".sha3()))).unwrap();
-		assert!(jdb.exists(&h));
+		assert!(jdb.contains(&h));
 		jdb.commit(4, &b"4".sha3(), Some((1, b"1".sha3()))).unwrap();
-		assert!(!jdb.exists(&h));
+		assert!(!jdb.contains(&h));
 	}
 
 	#[test]
@@ -254,34 +273,34 @@ mod tests {
 		let foo = jdb.insert(b"foo");
 		let bar = jdb.insert(b"bar");
 		jdb.commit(0, &b"0".sha3(), None).unwrap();
-		assert!(jdb.exists(&foo));
-		assert!(jdb.exists(&bar));
+		assert!(jdb.contains(&foo));
+		assert!(jdb.contains(&bar));
 
 		jdb.remove(&foo);
 		jdb.remove(&bar);
 		let baz = jdb.insert(b"baz");
 		jdb.commit(1, &b"1".sha3(), Some((0, b"0".sha3()))).unwrap();
-		assert!(jdb.exists(&foo));
-		assert!(jdb.exists(&bar));
-		assert!(jdb.exists(&baz));
+		assert!(jdb.contains(&foo));
+		assert!(jdb.contains(&bar));
+		assert!(jdb.contains(&baz));
 
 		let foo = jdb.insert(b"foo");
 		jdb.remove(&baz);
 		jdb.commit(2, &b"2".sha3(), Some((1, b"1".sha3()))).unwrap();
-		assert!(jdb.exists(&foo));
-		assert!(!jdb.exists(&bar));
-		assert!(jdb.exists(&baz));
+		assert!(jdb.contains(&foo));
+		assert!(!jdb.contains(&bar));
+		assert!(jdb.contains(&baz));
 
 		jdb.remove(&foo);
 		jdb.commit(3, &b"3".sha3(), Some((2, b"2".sha3()))).unwrap();
-		assert!(jdb.exists(&foo));
-		assert!(!jdb.exists(&bar));
-		assert!(!jdb.exists(&baz));
+		assert!(jdb.contains(&foo));
+		assert!(!jdb.contains(&bar));
+		assert!(!jdb.contains(&baz));
 
 		jdb.commit(4, &b"4".sha3(), Some((3, b"3".sha3()))).unwrap();
-		assert!(!jdb.exists(&foo));
-		assert!(!jdb.exists(&bar));
-		assert!(!jdb.exists(&baz));
+		assert!(!jdb.contains(&foo));
+		assert!(!jdb.contains(&bar));
+		assert!(!jdb.contains(&baz));
 	}
 
 	#[test]
@@ -292,8 +311,8 @@ mod tests {
 		let foo = jdb.insert(b"foo");
 		let bar = jdb.insert(b"bar");
 		jdb.commit(0, &b"0".sha3(), None).unwrap();
-		assert!(jdb.exists(&foo));
-		assert!(jdb.exists(&bar));
+		assert!(jdb.contains(&foo));
+		assert!(jdb.contains(&bar));
 
 		jdb.remove(&foo);
 		let baz = jdb.insert(b"baz");
@@ -302,13 +321,13 @@ mod tests {
 		jdb.remove(&bar);
 		jdb.commit(1, &b"1b".sha3(), Some((0, b"0".sha3()))).unwrap();
 
-		assert!(jdb.exists(&foo));
-		assert!(jdb.exists(&bar));
-		assert!(jdb.exists(&baz));
+		assert!(jdb.contains(&foo));
+		assert!(jdb.contains(&bar));
+		assert!(jdb.contains(&baz));
 
 		jdb.commit(2, &b"2b".sha3(), Some((1, b"1b".sha3()))).unwrap();
-		assert!(jdb.exists(&foo));
-		assert!(!jdb.exists(&baz));
-		assert!(!jdb.exists(&bar));
+		assert!(jdb.contains(&foo));
+		assert!(!jdb.contains(&baz));
+		assert!(!jdb.contains(&bar));
 	}
 }

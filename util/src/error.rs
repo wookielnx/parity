@@ -65,6 +65,8 @@ pub enum UtilError {
 	SimpleString(String),
 	/// Error from a bad input size being given for the needed output.
 	BadSize,
+	/// Error from snappy.
+	Snappy(::snappy::InvalidInput),
 }
 
 impl fmt::Display for UtilError {
@@ -82,6 +84,7 @@ impl fmt::Display for UtilError {
 			UtilError::Decoder(ref err) => f.write_fmt(format_args!("{}", err)),
 			UtilError::SimpleString(ref msg) => f.write_str(&msg),
 			UtilError::BadSize => f.write_str("Bad input size."),
+			UtilError::Snappy(ref err) => f.write_fmt(format_args!("{}", err)),
 		}
 	}
 }
@@ -101,7 +104,7 @@ impl<T: fmt::Debug + fmt::Display> fmt::Display for Mismatch<T> {
 	}
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 /// Error indicating value found is outside of a valid range.
 pub struct OutOfBounds<T: fmt::Debug> {
 	/// Minimum allowed value.
@@ -176,6 +179,12 @@ impl From<::rlp::DecoderError> for UtilError {
 impl From<String> for UtilError {
 	fn from(err: String) -> UtilError {
 		UtilError::SimpleString(err)
+	}
+}
+
+impl From<::snappy::InvalidInput> for UtilError {
+	fn from(err: ::snappy::InvalidInput) -> UtilError {
+		UtilError::Snappy(err)
 	}
 }
 

@@ -30,7 +30,7 @@ use blockchain::best_block::BestBlock;
 use types::tree_route::TreeRoute;
 use blockchain::update::ExtrasUpdate;
 use blockchain::{CacheSize, ImportRoute, Config};
-use db::{Writable, Readable, CacheUpdatePolicy};
+use db::{Writable, Readable, CacheUpdatePolicy, Key};
 
 const LOG_BLOOMS_LEVELS: usize = 3;
 const LOG_BLOOMS_ELEMENTS_PER_INDEX: usize = 16;
@@ -170,7 +170,7 @@ impl BlockProvider for BlockChain {
 	/// Get raw block data
 	fn block(&self, hash: &H256) -> Option<Bytes> {
 		{
-			let read = self.blocks.read().unwrap();
+			let read = self.blocks.read();
 			if let Some(v) = read.get(hash) {
 				return Some(v.clone());
 			}
@@ -184,7 +184,7 @@ impl BlockProvider for BlockChain {
 		match opt {
 			Some(b) => {
 				let bytes: Bytes = b.to_vec();
-				let mut write = self.blocks.write().unwrap();
+				let mut write = self.blocks.write();
 				write.insert(hash.clone(), bytes.clone());
 				Some(bytes)
 			},
@@ -253,12 +253,22 @@ impl BlockChain {
 		// open extras db
 		let mut extras_path = path.to_path_buf();
 		extras_path.push("extras");
-		let extras_db = Database::open_default(extras_path.to_str().unwrap()).unwrap();
+		let extras_db = match config.db_cache_size {
+			None => Database::open_default(extras_path.to_str().unwrap()).unwrap(),
+			Some(cache_size) => Database::open(
+				&DatabaseConfig::with_cache(cache_size/2),
+				extras_path.to_str().unwrap()).unwrap(),
+		};
 
 		// open blocks db
 		let mut blocks_path = path.to_path_buf();
 		blocks_path.push("blocks");
-		let blocks_db = Database::open_default(blocks_path.to_str().unwrap()).unwrap();
+		let blocks_db = match config.db_cache_size {
+			None => Database::open_default(blocks_path.to_str().unwrap()).unwrap(),
+			Some(cache_size) => Database::open(
+				&DatabaseConfig::with_cache(cache_size/2),
+				blocks_path.to_str().unwrap()).unwrap(),
+		};
 
 		let mut cache_man = CacheManager{cache_usage: VecDeque::new(), in_use: HashSet::new()};
 		(0..COLLECTION_QUEUE_SIZE).foreach(|_| cache_man.cache_usage.push_back(HashSet::new()));
@@ -285,7 +295,34 @@ impl BlockChain {
 
 		// load best block
 		let best_block_hash = match bc.extras_db.get(b"best").unwrap() {
-			Some(best) => H256::from_slice(&best),
+			Some(best) => {
+				let best = H256::from_slice(&best);
+				let mut b = best.clone();
+				let mut removed = 0;
+				let mut best_num = 0;
+				while !bc.blocks_db.get(&b).unwrap().is_some() {
+					// track back to the best block we have in the blocks database
+					let extras: BlockDetails = bc.extras_db.read(&b).unwrap();
+					type DetailsKey = Key<BlockDetails, Target=H264>;
+					bc.extras_db.delete(&(DetailsKey::key(&b))).unwrap();
+					b = extras.parent;
+					best_num = extras.number;
+					removed += 1;
+				}
+				if b != best {
+					let batch = DBTransaction::new();
+					let range = (best_num + 1) as bc::Number .. (best_num + removed) as bc::Number;
+					let chain = bc::group::BloomGroupChain::new(bc.blooms_config, &bc);
+					let changes = chain.replace(&range, vec![]);
+					for (k, v) in changes.into_iter() {
+						batch.write(&LogGroupPosition::from(k), &BloomGroup::from(v));
+					}
+					batch.put(b"best", &b).unwrap();
+					bc.extras_db.write(batch).unwrap();
+					info!("Restored mismatched best block. Was: {}, new: {}", best.hex(), b.hex());
+				}
+				b
+			}
 			None => {
 				// best block does not exist
 				// we need to insert genesis into the cache
@@ -313,7 +350,7 @@ impl BlockChain {
 		};
 
 		{
-			let mut best_block = bc.best_block.write().unwrap();
+			let mut best_block = bc.best_block.write();
 			best_block.number = bc.block_number(&best_block_hash).unwrap();
 			best_block.total_difficulty = bc.block_details(&best_block_hash).unwrap().total_difficulty;
 			best_block.hash = best_block_hash;
@@ -451,37 +488,34 @@ impl BlockChain {
 	/// Applies extras update.
 	fn apply_update(&self, update: ExtrasUpdate) {
 		let batch = DBTransaction::new();
-		batch.put(b"best", &update.info.hash).unwrap();
 
 		{
 			for hash in update.block_details.keys().cloned() {
 				self.note_used(CacheID::BlockDetails(hash));
 			}
 
-			let mut write_details = self.block_details.write().unwrap();
-			batch.extend_with_cache(write_details.deref_mut(), update.block_details, CacheUpdatePolicy::Overwrite);
+			let mut write_details = self.block_details.write();
+			batch.extend_with_cache(&mut *write_details, update.block_details, CacheUpdatePolicy::Overwrite);
 		}
 
 		{
-			let mut write_receipts = self.block_receipts.write().unwrap();
-			batch.extend_with_cache(write_receipts.deref_mut(), update.block_receipts, CacheUpdatePolicy::Remove);
+			let mut write_receipts = self.block_receipts.write();
+			batch.extend_with_cache(&mut *write_receipts, update.block_receipts, CacheUpdatePolicy::Remove);
 		}
 
 		{
-			let mut write_blocks_blooms = self.blocks_blooms.write().unwrap();
-			batch.extend_with_cache(write_blocks_blooms.deref_mut(), update.blocks_blooms, CacheUpdatePolicy::Remove);
+			let mut write_blocks_blooms = self.blocks_blooms.write();
+			batch.extend_with_cache(&mut *write_blocks_blooms, update.blocks_blooms, CacheUpdatePolicy::Remove);
 		}
 
 		// These cached values must be updated last and togeterh
 		{
-			let mut best_block = self.best_block.write().unwrap();
-			let mut write_hashes = self.block_hashes.write().unwrap();
-			let mut write_txs = self.transaction_addresses.write().unwrap();
-
 			// update best block
 			match update.info.location {
 				BlockLocation::Branch => (),
 				_ => {
+					batch.put(b"best", &update.info.hash).unwrap();
+					let mut best_block = self.best_block.write();
 					*best_block = BestBlock {
 						hash: update.info.hash,
 						number: update.info.number,
@@ -490,8 +524,11 @@ impl BlockChain {
 				}
 			}
 
-			batch.extend_with_cache(write_hashes.deref_mut(), update.block_hashes, CacheUpdatePolicy::Remove);
-			batch.extend_with_cache(write_txs.deref_mut(), update.transactions_addresses, CacheUpdatePolicy::Remove);
+			let mut write_hashes = self.block_hashes.write();
+			let mut write_txs = self.transaction_addresses.write();
+
+			batch.extend_with_cache(&mut *write_hashes, update.block_hashes, CacheUpdatePolicy::Remove);
+			batch.extend_with_cache(&mut *write_txs, update.transactions_addresses, CacheUpdatePolicy::Remove);
 
 			// update extras database
 			self.extras_db.write(batch).unwrap();
@@ -703,33 +740,33 @@ impl BlockChain {
 
 	/// Get best block hash.
 	pub fn best_block_hash(&self) -> H256 {
-		self.best_block.read().unwrap().hash.clone()
+		self.best_block.read().hash.clone()
 	}
 
 	/// Get best block number.
 	pub fn best_block_number(&self) -> BlockNumber {
-		self.best_block.read().unwrap().number
+		self.best_block.read().number
 	}
 
 	/// Get best block total difficulty.
 	pub fn best_block_total_difficulty(&self) -> U256 {
-		self.best_block.read().unwrap().total_difficulty
+		self.best_block.read().total_difficulty
 	}
 
 	/// Get current cache size.
 	pub fn cache_size(&self) -> CacheSize {
 		CacheSize {
-			blocks: self.blocks.read().unwrap().heap_size_of_children(),
-			block_details: self.block_details.read().unwrap().heap_size_of_children(),
-			transaction_addresses: self.transaction_addresses.read().unwrap().heap_size_of_children(),
-			blocks_blooms: self.blocks_blooms.read().unwrap().heap_size_of_children(),
-			block_receipts: self.block_receipts.read().unwrap().heap_size_of_children(),
+			blocks: self.blocks.read().heap_size_of_children(),
+			block_details: self.block_details.read().heap_size_of_children(),
+			transaction_addresses: self.transaction_addresses.read().heap_size_of_children(),
+			blocks_blooms: self.blocks_blooms.read().heap_size_of_children(),
+			block_receipts: self.block_receipts.read().heap_size_of_children(),
 		}
 	}
 
 	/// Let the cache system know that a cacheable item has been used.
 	fn note_used(&self, id: CacheID) {
-		let mut cache_man = self.cache_man.write().unwrap();
+		let mut cache_man = self.cache_man.write();
 		if !cache_man.cache_usage[0].contains(&id) {
 			cache_man.cache_usage[0].insert(id.clone());
 			if cache_man.in_use.contains(&id) {
@@ -748,13 +785,13 @@ impl BlockChain {
 
 		for _ in 0..COLLECTION_QUEUE_SIZE {
 			{
-				let mut blocks = self.blocks.write().unwrap();
-				let mut block_details = self.block_details.write().unwrap();
-				let mut block_hashes = self.block_hashes.write().unwrap();
-				let mut transaction_addresses = self.transaction_addresses.write().unwrap();
-				let mut blocks_blooms = self.blocks_blooms.write().unwrap();
-				let mut block_receipts = self.block_receipts.write().unwrap();
-				let mut cache_man = self.cache_man.write().unwrap();
+				let mut blocks = self.blocks.write();
+				let mut block_details = self.block_details.write();
+				let mut block_hashes = self.block_hashes.write();
+				let mut transaction_addresses = self.transaction_addresses.write();
+				let mut blocks_blooms = self.blocks_blooms.write();
+				let mut block_receipts = self.block_receipts.write();
+				let mut cache_man = self.cache_man.write();
 
 				for id in cache_man.cache_usage.pop_back().unwrap().into_iter() {
 					cache_man.in_use.remove(&id);
@@ -1151,5 +1188,32 @@ mod tests {
 		assert_eq!(blocks_b1, vec![1]);
 		assert_eq!(blocks_b2, vec![2]);
 		assert_eq!(blocks_ba, vec![3]);
+	}
+
+	#[test]
+	fn test_best_block_update() {
+		let mut canon_chain = ChainGenerator::default();
+		let mut finalizer = BlockFinalizer::default();
+		let genesis = canon_chain.generate(&mut finalizer).unwrap();
+
+		let temp = RandomTempPath::new();
+
+		{
+			let bc = BlockChain::new(Config::default(), &genesis, temp.as_path());
+			let uncle = canon_chain.fork(1).generate(&mut finalizer.fork()).unwrap();
+
+			// create a longer fork
+			for _ in 0..5 {
+				let canon_block = canon_chain.generate(&mut finalizer).unwrap();
+				bc.insert_block(&canon_block, vec![]);
+			}
+
+			assert_eq!(bc.best_block_number(), 5);
+			bc.insert_block(&uncle, vec![]);
+		}
+
+		// re-loading the blockchain should load the correct best block.
+		let bc = BlockChain::new(Config::default(), &genesis, temp.as_path());
+		assert_eq!(bc.best_block_number(), 5);
 	}
 }

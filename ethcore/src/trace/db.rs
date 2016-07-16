@@ -15,20 +15,19 @@
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Trace database.
-use std::ptr;
 use std::ops::{Deref, DerefMut};
 use std::collections::HashMap;
-use std::sync::{RwLock, Arc};
+use std::sync::Arc;
 use std::path::Path;
 use bloomchain::{Number, Config as BloomConfig};
 use bloomchain::group::{BloomGroupDatabase, BloomGroupChain, GroupPosition, BloomGroup};
-use util::{H256, H264, Database, DBTransaction};
+use util::{H256, H264, Database, DatabaseConfig, DBTransaction, RwLock};
 use header::BlockNumber;
-use trace::{BlockTraces, LocalizedTrace, Config, Switch, Filter, Database as TraceDatabase, ImportRequest,
-DatabaseExtras, Error};
+use trace::{BlockTraces, LocalizedTrace, Config, Switch, Filter, Database as TraceDatabase, ImportRequest, DatabaseExtras, Error};
 use db::{Key, Writable, Readable, CacheUpdatePolicy};
 use blooms;
 use super::flat::{FlatTrace, FlatBlockTraces, FlatTransactionTraces};
+
 
 const TRACE_DB_VER: &'static [u8] = b"1.0";
 
@@ -47,9 +46,7 @@ impl Key<BlockTraces> for H256 {
 	fn key(&self) -> H264 {
 		let mut result = H264::default();
 		result[0] = TraceDBIndex::BlockTraces as u8;
-		unsafe {
-			ptr::copy(self.as_ptr(), result.as_mut_ptr().offset(1), 32);
-		}
+		result[1..33].copy_from_slice(self);
 		result
 	}
 }
@@ -84,9 +81,9 @@ impl Key<blooms::BloomGroup> for TraceGroupPosition {
 		result[0] = TraceDBIndex::BloomGroups as u8;
 		result[1] = self.0.level;
 		result[2] = self.0.index as u8;
-		result[3] = (self.0.index << 8) as u8;
-		result[4] = (self.0.index << 16) as u8;
-		result[5] = (self.0.index << 24) as u8;
+		result[3] = (self.0.index >> 8) as u8;
+		result[4] = (self.0.index >> 16) as u8;
+		result[5] = (self.0.index >> 24) as u8;
 		TraceGroupKey(result)
 	}
 }
@@ -118,7 +115,12 @@ impl<T> TraceDB<T> where T: DatabaseExtras {
 	pub fn new(config: Config, path: &Path, extras: Arc<T>) -> Result<Self, Error> {
 		let mut tracedb_path = path.to_path_buf();
 		tracedb_path.push("tracedb");
-		let tracesdb = Database::open_default(tracedb_path.to_str().unwrap()).unwrap();
+		let tracesdb = match config.db_cache_size {
+			None => Database::open_default(tracedb_path.to_str().unwrap()).unwrap(),
+			Some(db_cache) => Database::open(
+				&DatabaseConfig::with_cache(db_cache),
+				tracedb_path.to_str().unwrap()).unwrap(),
+		};
 
 		// check if in previously tracing was enabled
 		let old_tracing = match tracesdb.get(b"enabled").unwrap() {
@@ -227,7 +229,7 @@ impl<T> TraceDatabase for TraceDB<T> where T: DatabaseExtras {
 
 		// at first, let's insert new block traces
 		{
-			let mut traces = self.traces.write().unwrap();
+			let mut traces = self.traces.write();
 			// it's important to use overwrite here,
 			// cause this value might be queried by hash later
 			batch.write_with_cache(traces.deref_mut(), request.block_hash, request.traces, CacheUpdatePolicy::Overwrite);
@@ -255,7 +257,7 @@ impl<T> TraceDatabase for TraceDB<T> where T: DatabaseExtras {
 				.map(|p| (From::from(p.0), From::from(p.1)))
 				.collect::<HashMap<TraceGroupPosition, blooms::BloomGroup>>();
 
-			let mut blooms = self.blooms.write().unwrap();
+			let mut blooms = self.blooms.write();
 			batch.extend_with_cache(blooms.deref_mut(), blooms_to_insert, CacheUpdatePolicy::Remove);
 		}
 

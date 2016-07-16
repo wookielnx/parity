@@ -17,7 +17,6 @@
 //! Session handlers factory.
 
 use ws;
-use sysui;
 use authcode_store::AuthCodes;
 use std::path::{PathBuf, Path};
 use std::sync::Arc;
@@ -25,11 +24,31 @@ use std::str::FromStr;
 use jsonrpc_core::IoHandler;
 use util::H256;
 
-fn origin_is_allowed(self_origin: &str, header: Option<&Vec<u8>>) -> bool {
+#[cfg(feature = "ui")]
+mod signer {
+	use signer;
+
+	pub fn handle(req: &str) -> Option<signer::File> {
+		signer::handle(req)
+	}
+}
+#[cfg(not(feature = "ui"))]
+mod signer {
+	pub struct File {
+		pub content: String,
+		pub mime: String,
+	}
+
+	pub fn handle(_req: &str) -> Option<File> {
+		None
+	}
+}
+
+fn origin_is_allowed(self_origin: &str, header: Option<&[u8]>) -> bool {
 	match header {
 		None => false,
 		Some(h) => {
-			let v = String::from_utf8(h.clone()).ok();
+			let v = String::from_utf8(h.to_owned()).ok();
 			match v {
 				Some(ref origin) if origin.starts_with("chrome-extension://") => true,
 				Some(ref origin) if origin.starts_with(self_origin) => true,
@@ -62,6 +81,19 @@ fn auth_is_valid(codes: &Path, protocols: ws::Result<Vec<&str>>) -> bool {
 	}
 }
 
+fn add_headers(mut response: ws::Response, mime: &str) -> ws::Response {
+	let content_len = format!("{}", response.len());
+	{
+		let mut headers = response.headers_mut();
+		headers.push(("X-Frame-Options".into(), b"SAMEORIGIN".to_vec()));
+		headers.push(("Server".into(), b"Parity/SignerUI".to_vec()));
+		headers.push(("Content-Length".into(), content_len.as_bytes().to_vec()));
+		headers.push(("Content-Type".into(), mime.as_bytes().to_vec()));
+		headers.push(("Connection".into(), b"close".to_vec()));
+	}
+	response
+}
+
 pub struct Session {
 	out: ws::Sender,
 	self_origin: String,
@@ -71,8 +103,8 @@ pub struct Session {
 
 impl ws::Handler for Session {
 	fn on_request(&mut self, req: &ws::Request) -> ws::Result<(ws::Response)> {
-		let origin = req.header("origin").or_else(|| req.header("Origin"));
-		let host = req.header("host").or_else(|| req.header("Host"));
+		let origin = req.header("origin").or_else(|| req.header("Origin")).map(|x| &x[..]);
+		let host = req.header("host").or_else(|| req.header("Host")).map(|x| &x[..]);
 
 		// Check request origin and host header.
 		if !origin_is_allowed(&self.self_origin, origin) && !(origin.is_none() && origin_is_allowed(&self.self_origin, host)) {
@@ -98,26 +130,13 @@ impl ws::Handler for Session {
 		}
 
 		// Otherwise try to serve a page.
-		sysui::handle(req.resource())
+		Ok(signer::handle(req.resource())
 			.map_or_else(
-				// return error
-				|| Ok(ws::Response::not_found("Page not found".into())),
+				// return 404 not found
+				|| add_headers(ws::Response::not_found("Not found".into()), "text/plain"),
 				// or serve the file
-				|f| {
-					let content_len = format!("{}", f.content.as_bytes().len());
-					let mut res = ws::Response::ok(f.content.into());
-					{
-						let mut headers = res.headers_mut();
-						headers.push(("Server".into(), b"Parity/SignerUI".to_vec()));
-						headers.push(("Connection".into(), b"Closed".to_vec()));
-						headers.push(("Content-Length".into(), content_len.as_bytes().to_vec()));
-						headers.push(("Content-Type".into(), f.mime.as_bytes().to_vec()));
-						if !f.safe_to_embed {
-							headers.push(("X-Frame-Options".into(), b"SAMEORIGIN".to_vec()));
-						}
-					}
-					Ok(res)
-				})
+				|f| add_headers(ws::Response::ok(f.content.into()), &f.mime)
+			))
 	}
 
 	fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
