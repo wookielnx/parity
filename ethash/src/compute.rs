@@ -185,7 +185,7 @@ impl SeedHashCompute {
 	#[inline]
 	pub fn resume_compute_seedhash(mut hash: H256, start_epoch: u64, end_epoch: u64) -> H256 {
 		for _ in start_epoch..end_epoch {
-			unsafe { sha3::sha3_256(hash[..].as_mut_ptr(), 32, hash[..].as_ptr(), 32) };
+			unsafe { sha3::sha3_simple(hash[..].as_mut_ptr(), 32, hash[..].as_ptr(), 32) };
 		}
 		hash
 	}
@@ -199,7 +199,7 @@ fn fnv_hash(x: u32, y: u32) -> u32 {
 
 #[inline]
 fn sha3_512(input: &[u8], output: &mut [u8]) {
-	unsafe { sha3::sha3_512(output.as_mut_ptr(), output.len(), input.as_ptr(), input.len()) };
+	unsafe { sha3::sha3_simple(output.as_mut_ptr(), output.len(), input.as_ptr(), input.len()) };
 }
 
 #[inline]
@@ -234,11 +234,11 @@ pub fn quick_get_difficulty(header_hash: &H256, nonce: u64, mix_hash: &H256) -> 
 	unsafe { ptr::copy_nonoverlapping(header_hash.as_ptr(), buf.as_mut_ptr(), 32) };
 	unsafe { ptr::copy_nonoverlapping(mem::transmute(&nonce), buf[32..].as_mut_ptr(), 8) };
 
-	unsafe { sha3::sha3_512(buf.as_mut_ptr(), 64, buf.as_ptr(), 40) };
+	unsafe { sha3::sha3_simple(buf.as_mut_ptr(), 64, buf.as_ptr(), 40) };
 	unsafe { ptr::copy_nonoverlapping(mix_hash.as_ptr(), buf[64..].as_mut_ptr(), 32) };
 
 	let mut hash = [0u8; 32];
-	unsafe { sha3::sha3_256(hash.as_mut_ptr(), hash.len(), buf.as_ptr(), buf.len()) };
+	unsafe { sha3::sha3_simple(hash.as_mut_ptr(), hash.len(), buf.as_ptr(), buf.len()) };
 	hash.as_mut_ptr();
 	hash
 }
@@ -263,7 +263,7 @@ fn hash_compute(light: &Light, full_size: usize, header_hash: &H256, nonce: u64)
 
 	// compute sha3-512 hash and replicate across mix
 	unsafe {
-		sha3::sha3_512(s_mix.get_unchecked_mut(0).bytes.as_mut_ptr(), NODE_BYTES, s_mix.get_unchecked(0).bytes.as_ptr(), 40);
+		sha3::sha3_simple(s_mix.get_unchecked_mut(0).bytes.as_mut_ptr(), NODE_BYTES, s_mix.get_unchecked(0).bytes.as_ptr(), 40);
 		let (f_mix, mut mix) = s_mix.split_at_mut(1);
 		for w in 0..MIX_WORDS {
 			*mix.get_unchecked_mut(0).as_words_mut().get_unchecked_mut(w) = *f_mix.get_unchecked(0).as_words().get_unchecked(w % NODE_WORDS);
@@ -299,7 +299,7 @@ fn hash_compute(light: &Light, full_size: usize, header_hash: &H256, nonce: u64)
 		ptr::copy_nonoverlapping(mix.get_unchecked_mut(0).bytes.as_ptr(), buf[64..].as_mut_ptr(), 32);
 		ptr::copy_nonoverlapping(mix.get_unchecked_mut(0).bytes.as_ptr(), mix_hash.as_mut_ptr(), 32);
 		let mut value: H256 = [0u8; 32];
-		sha3::sha3_256(value.as_mut_ptr(), value.len(), buf.as_ptr(), buf.len());
+		sha3::sha3_simple(value.as_mut_ptr(), value.len(), buf.as_ptr(), buf.len());
 		ProofOfWork {
 			mix_hash: mix_hash,
 			value: value,
@@ -313,7 +313,7 @@ fn calculate_dag_item(node_index: u32, cache: &[Node]) -> Node {
 		let init = cache.get_unchecked(node_index as usize % num_parent_nodes);
 		let mut ret = init.clone();
 		*ret.as_words_mut().get_unchecked_mut(0) ^= node_index;
-		sha3::sha3_512(ret.bytes.as_mut_ptr(), ret.bytes.len(), ret.bytes.as_ptr(), ret.bytes.len());
+		sha3::sha3_simple(ret.bytes.as_mut_ptr(), ret.bytes.len(), ret.bytes.as_ptr(), ret.bytes.len());
 
 		for i in 0..ETHASH_DATASET_PARENTS {
 			let parent_index = fnv_hash(node_index ^ i, *ret.as_words().get_unchecked(i as usize % NODE_WORDS)) % num_parent_nodes as u32;
@@ -322,7 +322,7 @@ fn calculate_dag_item(node_index: u32, cache: &[Node]) -> Node {
 				*ret.as_words_mut().get_unchecked_mut(w) = fnv_hash(*ret.as_words().get_unchecked(w), *parent.as_words().get_unchecked(w));
 			}
 		}
-		sha3::sha3_512(ret.bytes.as_mut_ptr(), ret.bytes.len(), ret.bytes.as_ptr(), ret.bytes.len());
+		sha3::sha3_simple(ret.bytes.as_mut_ptr(), ret.bytes.len(), ret.bytes.as_ptr(), ret.bytes.len());
 		ret
 	}
 }
@@ -343,7 +343,7 @@ fn light_new(block_number: u64) -> Light {
 	unsafe {
 		sha3_512(&seedhash[0..32], &mut nodes.get_unchecked_mut(0).bytes);
 		for i in 1..num_nodes {
-			sha3::sha3_512(nodes.get_unchecked_mut(i).bytes.as_mut_ptr(), NODE_BYTES, nodes.get_unchecked(i - 1).bytes.as_ptr(), NODE_BYTES);
+			sha3::sha3_simple(nodes.get_unchecked_mut(i).bytes.as_mut_ptr(), NODE_BYTES, nodes.get_unchecked(i - 1).bytes.as_ptr(), NODE_BYTES);
 		}
 
 		for _ in 0..ETHASH_CACHE_ROUNDS {
