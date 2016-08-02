@@ -238,7 +238,6 @@ impl State {
 		// TODO uncomment once to_pod() works correctly.
 //		trace!("Applied transaction. Diff:\n{}\n", state_diff::diff_pod(&old, &self.to_pod()));
 		self.commit();
-		self.clear();
 		let receipt = Receipt::new(self.root().clone(), e.cumulative_gas_used, e.logs);
 //		trace!("Transaction receipt: {:?}", receipt);
 		Ok(ApplyOutcome{receipt: receipt, trace: e.trace})
@@ -263,9 +262,12 @@ impl State {
 
 		{
 			let mut trie = trie_factory.from_existing(db, root).unwrap();
-			for (address, ref a) in accounts.iter() {
+			for (address, ref mut a) in accounts.iter_mut() {
 				match **a {
-					Some(ref account) if account.is_dirty() => trie.insert(address, &account.rlp()),
+					Some(ref mut account) if account.is_dirty() => {
+						account.set_clean();
+						trie.insert(address, &account.rlp())
+					},
 					None => trie.remove(address),
 					_ => (),
 				}
