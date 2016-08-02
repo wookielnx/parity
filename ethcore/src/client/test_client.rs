@@ -272,7 +272,7 @@ impl MiningBlockChainClient for TestBlockChainClient {
 			false,
 			db,
 			&genesis_header,
-			last_hashes,
+			Arc::new(last_hashes),
 			Address::zero(),
 			(3141562.into(), 31415620.into()),
 			vec![]
