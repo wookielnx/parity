@@ -73,7 +73,7 @@ use std::default::Default;
 /// ```
 #[derive(PartialEq)]
 pub struct MemoryDB {
-	data: HashMap<H256, (Bytes, i32)>,
+	data: H256FastMap<(Bytes, i32)>,
 	static_null_rlp: (Bytes, i32),
 	aux: HashMap<Bytes, Bytes>,
 }
@@ -88,7 +88,7 @@ impl MemoryDB {
 	/// Create a new instance of the memory DB.
 	pub fn new() -> MemoryDB {
 		MemoryDB {
-			data: HashMap::new(),
+			data: H256FastMap::default(),
  			static_null_rlp: (vec![0x80u8; 1], 1),
 			aux: HashMap::new(),
 		}
@@ -136,8 +136,8 @@ impl MemoryDB {
 	}
 
 	/// Return the internal map of hashes to data, clearing the current state.
-	pub fn drain(&mut self) -> HashMap<H256, (Bytes, i32)> {
-		mem::replace(&mut self.data, HashMap::new())
+	pub fn drain(&mut self) -> H256FastMap<(Bytes, i32)> {
+		mem::replace(&mut self.data, H256FastMap::default())
 	}
 
 	/// Return the internal map of auxiliary data, clearing the current state.
@@ -152,7 +152,7 @@ impl MemoryDB {
 	pub fn denote(&self, key: &H256, value: Bytes) -> &(Bytes, i32) {
 		if self.raw(key) == None {
 			unsafe {
-				let p = &self.data as *const HashMap<H256, (Bytes, i32)> as *mut HashMap<H256, (Bytes, i32)>;
+				let p = &self.data as *const H256FastMap<(Bytes, i32)> as *mut H256FastMap<(Bytes, i32)>;
 				(*p).insert(key.clone(), (value, 0));
 			}
 		}
