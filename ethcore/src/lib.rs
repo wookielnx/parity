@@ -137,6 +137,7 @@ mod externalities;
 mod verification;
 mod blockchain;
 mod types;
+mod factory;
 
 #[cfg(test)]
 mod tests;
