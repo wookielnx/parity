@@ -194,7 +194,7 @@ impl JournalDB for RefCountedDB {
 	}
 
 	fn merkle_proof(&self) -> Vec<Bytes> {
-		self.forward.merkle_proof()
+		self.forward.merkle_proof(&self.removes)
 	}
 }
 

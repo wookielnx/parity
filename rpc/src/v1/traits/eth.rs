@@ -125,6 +125,9 @@ pub trait Eth: Sized + Send + Sync + 'static {
 	/// Used for submitting mining hashrate.
 	fn submit_hashrate(&self, _: Params) -> Result<Value, Error>;
 
+	/// Generate a merkle proof for the given block.
+	fn merkle_proof(&self, _: Params) -> Result<Value, Error>;
+
 	/// Should be used to convert object to io delegate.
 	fn to_delegate(self) -> IoDelegate<Self> {
 		let mut delegate = IoDelegate::new(Arc::new(self));
@@ -163,6 +166,7 @@ pub trait Eth: Sized + Send + Sync + 'static {
 		delegate.add_method("eth_getWork", Eth::work);
 		delegate.add_method("eth_submitWork", Eth::submit_work);
 		delegate.add_method("eth_submitHashrate", Eth::submit_hashrate);
+		delegate.add_method("eth_merkleProof", Eth::merkle_proof);
 		delegate
 	}
 }

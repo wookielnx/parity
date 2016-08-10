@@ -125,8 +125,13 @@ impl OverlayDB {
 		}
 	}
 
-	pub fn merkle_proof(&self) -> Vec<Bytes> {
-		self.overlay.merkle_proof()
+	/// Construct a merkle proof, given the following removals vector.
+	pub fn merkle_proof(&self, removes: &[H256]) -> Vec<Bytes> {
+		let mut temp_overlay = self.overlay.clone();
+		for key in removes {
+			temp_overlay.remove(key);
+		}
+		temp_overlay.merkle_proof()
 	}
 }
 
