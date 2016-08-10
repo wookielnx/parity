@@ -299,6 +299,10 @@ impl BlockChainClient for TestBlockChainClient {
 		self.execution_result.read().clone().unwrap()
 	}
 
+	fn merkle_proof(&self, _id: BlockID) -> Option<Vec<Bytes>> {
+		None
+	}
+
 	fn block_total_difficulty(&self, _id: BlockID) -> Option<U256> {
 		Some(U256::zero())
 	}

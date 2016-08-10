@@ -751,6 +751,49 @@ impl BlockChainClient for Client {
 		Ok(ret)
 	}
 
+	fn merkle_proof(&self, id: BlockID) -> Option<Vec<Bytes>> {
+		use header::Header;
+		use util::rlp::{Rlp, View};
+
+		let block_raw = match self.block(id) {
+			Some(raw) => raw,
+			None => return None,
+		};
+
+		let block = BlockView::new(&block_raw);
+
+		let parent_raw = match self.block_header(BlockID::Hash(block.header_view().parent_hash())) {
+			Some(raw) => raw,
+			None => return None,
+		};
+
+		let parent_header: Header = Rlp::new(&parent_raw).as_val();
+
+		let last_hashes = self.build_last_hashes(parent_header.hash());
+
+		// assumes that the memory overlay of the root state db is empty.
+		let locked_block = ::block::enact(
+			&block.header(),
+			&block.transactions(),
+			&block.uncles(),
+			&*self.engine,
+			false,
+			self.state_db.lock().boxed_clone(),
+			&parent_header,
+			last_hashes,
+			self.factories.clone(),
+		);
+
+		match locked_block {
+			Ok(lb) => {
+				Some(lb.drain().merkle_proof())
+			}
+			Err(_) => {
+				None
+			}
+		}
+	}
+
 	fn keep_alive(&self) {
 		if self.mode != Mode::Active {
 			self.wake_up();
