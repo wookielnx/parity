@@ -408,11 +408,11 @@ impl JournalDB for EarlyMergeDB {
 
 			let removes: Vec<H256> = drained
 				.iter()
-				.filter_map(|(k, &(_, c))| if c < 0 {Some(k.clone())} else {None})
+				.filter_map(|(k, item)| if item.rc < 0 {Some(k.clone())} else {None})
 				.collect();
 			let inserts: Vec<(H256, Bytes)> = drained
 				.into_iter()
-				.filter_map(|(k, (v, r))| if r > 0 { assert!(r == 1); Some((k, v)) } else { assert!(r >= -1); None })
+				.filter_map(|(k, item)| if item.rc > 0 { assert!(item.rc == 1); Some((k, item.value)) } else { assert!(item.rc >= -1); None })
 				.collect();
 
 
@@ -516,16 +516,16 @@ impl JournalDB for EarlyMergeDB {
 
 	fn inject(&mut self, batch: &DBTransaction) -> Result<u32, UtilError> {
 		let mut ops = 0;
-		for (key, (value, rc)) in self.overlay.drain() {
-			if rc != 0 { ops += 1 }
+		for (key, item) in self.overlay.drain() {
+			if item.rc != 0 { ops += 1 }
 
-			match rc {
+			match item.rc {
 				0 => {}
 				1 => {
 					if try!(self.backing.get(self.column, &key)).is_some() {
 						return Err(BaseDataError::AlreadyExists(key).into());
 					}
-					try!(batch.put(self.column, &key, &value))
+					try!(batch.put(self.column, &key, &item.value))
 				}
 				-1 => {
 					if try!(self.backing.get(self.column, &key)).is_none() {
@@ -538,6 +538,10 @@ impl JournalDB for EarlyMergeDB {
 		}
 
 		Ok(ops)
+	}
+
+	fn merkle_proof(&self) -> Vec<Bytes> {
+		self.overlay.merkle_proof()
 	}
 }
 

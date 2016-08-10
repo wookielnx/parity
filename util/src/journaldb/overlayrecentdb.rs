@@ -22,9 +22,10 @@ use hashdb::*;
 use memorydb::*;
 use super::{DB_PREFIX_LEN, LATEST_ERA_KEY};
 use kvdb::{Database, DBTransaction};
+use super::JournalDB;
+
 #[cfg(test)]
 use std::env;
-use super::JournalDB;
 
 /// Implementation of the `JournalDB` trait for a disk-backed database with a memory overlay
 /// and, possibly, latent-removal semantics.
@@ -60,7 +61,7 @@ use super::JournalDB;
 pub struct OverlayRecentDB {
 	transaction_overlay: MemoryDB,
 	backing: Arc<Database>,
-	journal_overlay: Arc<RwLock<JournalOverlay>>,
+	journal_overlay: Arc<Mutex<JournalOverlay>>,
 	column: Option<u32>,
 }
 
@@ -100,7 +101,7 @@ const PADDING : [u8; 10] = [ 0u8; 10 ];
 impl OverlayRecentDB {
 	/// Create a new instance.
 	pub fn new(backing: Arc<Database>, col: Option<u32>) -> OverlayRecentDB {
-		let journal_overlay = Arc::new(RwLock::new(OverlayRecentDB::read_overlay(&backing, col)));
+		let journal_overlay = Arc::new(Mutex::new(OverlayRecentDB::read_overlay(&backing, col)));
 		OverlayRecentDB {
 			transaction_overlay: MemoryDB::new(),
 			backing: backing,
@@ -121,7 +122,7 @@ impl OverlayRecentDB {
 	#[cfg(test)]
 	fn can_reconstruct_refs(&self) -> bool {
 		let reconstructed = Self::read_overlay(&self.backing, self.column);
-		let journal_overlay = self.journal_overlay.read();
+		let journal_overlay = self.journal_overlay.lock();
 		*journal_overlay == reconstructed
 	}
 
@@ -192,7 +193,7 @@ impl JournalDB for OverlayRecentDB {
 
 	fn mem_used(&self) -> usize {
 		let mut mem = self.transaction_overlay.mem_used();
-		let overlay = self.journal_overlay.read();
+		let overlay = self.journal_overlay.lock();
 		mem += overlay.backing_overlay.mem_used();
 		mem += overlay.journal.heap_size_of_children();
 		mem
@@ -206,24 +207,24 @@ impl JournalDB for OverlayRecentDB {
 		&self.backing
 	}
 
-	fn latest_era(&self) -> Option<u64> { self.journal_overlay.read().latest_era }
+	fn latest_era(&self) -> Option<u64> { self.journal_overlay.lock().latest_era }
 
 	fn state(&self, key: &H256) -> Option<Bytes> {
-		let v = self.journal_overlay.read().backing_overlay.get(&to_short_key(key)).map(|v| v.to_vec());
+		let v = self.journal_overlay.lock().backing_overlay.get(&to_short_key(key)).map(|v| v.to_vec());
 		v.or_else(|| self.backing.get_by_prefix(self.column, &key[0..DB_PREFIX_LEN]).map(|b| b.to_vec()))
 	}
 
 	fn commit(&mut self, batch: &DBTransaction, now: u64, id: &H256, end: Option<(u64, H256)>) -> Result<u32, UtilError> {
 		// record new commit's details.
 		trace!("commit: #{} ({}), end era: {:?}", now, id, end);
-		let mut journal_overlay = self.journal_overlay.write();
+		let mut journal_overlay = self.journal_overlay.lock();
 		{
 			let mut r = RlpStream::new_list(3);
 			let mut tx = self.transaction_overlay.drain();
-			let inserted_keys: Vec<_> = tx.iter().filter_map(|(k, &(_, c))| if c > 0 { Some(k.clone()) } else { None }).collect();
-			let removed_keys: Vec<_> = tx.iter().filter_map(|(k, &(_, c))| if c < 0 { Some(k.clone()) } else { None }).collect();
+			let inserted_keys: Vec<_> = tx.iter().filter_map(|(k, i)| if i.rc > 0 { Some(k.clone()) } else { None }).collect();
+			let removed_keys: Vec<_> = tx.iter().filter_map(|(k, i)| if i.rc < 0 { Some(k.clone()) } else { None }).collect();
 			// Increase counter for each inserted key no matter if the block is canonical or not.
-			let insertions = tx.drain().filter_map(|(k, (v, c))| if c > 0 { Some((k, v)) } else { None });
+			let insertions = tx.drain().filter_map(|(k, i)| if i.rc > 0 { Some((k, i.value)) } else { None });
 			r.append(id);
 			r.begin_list(inserted_keys.len());
 			for (k, v) in insertions {
@@ -300,16 +301,16 @@ impl JournalDB for OverlayRecentDB {
 
 	fn inject(&mut self, batch: &DBTransaction) -> Result<u32, UtilError> {
 		let mut ops = 0;
-		for (key, (value, rc)) in self.transaction_overlay.drain() {
-			if rc != 0 { ops += 1 }
+		for (key, item) in self.transaction_overlay.drain() {
+			if item.rc != 0 { ops += 1 }
 
-			match rc {
+			match item.rc {
 				0 => {}
 				1 => {
 					if try!(self.backing.get(self.column, &key)).is_some() {
 						return Err(BaseDataError::AlreadyExists(key).into());
 					}
-					try!(batch.put(self.column, &key, &value))
+					try!(batch.put(self.column, &key, &item.value))
 				}
 				-1 => {
 					if try!(self.backing.get(self.column, &key)).is_none() {
@@ -322,6 +323,10 @@ impl JournalDB for OverlayRecentDB {
 		}
 
 		Ok(ops)
+	}
+
+	fn merkle_proof(&self) -> Vec<Bytes> {
+		self.transaction_overlay.merkle_proof()
 	}
 }
 
@@ -345,7 +350,7 @@ impl HashDB for OverlayRecentDB {
 		match k {
 			Some((d, rc)) if rc > 0 => Some(d),
 			_ => {
-				let v = self.journal_overlay.read().backing_overlay.get(&to_short_key(key)).map(|v| v.to_vec());
+				let v = self.journal_overlay.lock().backing_overlay.get(&to_short_key(key)).map(|v| v.to_vec());
 				match v {
 					Some(x) => {
 						Some(&self.transaction_overlay.denote(key, x).0)

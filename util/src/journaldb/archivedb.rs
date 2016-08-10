@@ -160,15 +160,14 @@ impl JournalDB for ArchiveDB {
 		let mut inserts = 0usize;
 		let mut deletes = 0usize;
 
-		for i in self.overlay.drain().into_iter() {
-			let (key, (value, rc)) = i;
-			if rc > 0 {
-				assert!(rc == 1);
-				batch.put(self.column, &key, &value).expect("Low-level database error. Some issue with your hard disk?");
+		for (key, item) in self.overlay.drain().into_iter() {
+			if item.rc > 0 {
+				assert!(item.rc == 1);
+				batch.put(self.column, &key, &item.value).expect("Low-level database error. Some issue with your hard disk?");
 				inserts += 1;
 			}
-			if rc < 0 {
-				assert!(rc == -1);
+			if item.rc < 0 {
+				assert!(item.rc == -1);
 				deletes += 1;
 			}
 		}
@@ -189,18 +188,17 @@ impl JournalDB for ArchiveDB {
 		let mut inserts = 0usize;
 		let mut deletes = 0usize;
 
-		for i in self.overlay.drain().into_iter() {
-			let (key, (value, rc)) = i;
-			if rc > 0 {
-				assert!(rc == 1);
+		for (key, item) in self.overlay.drain().into_iter() {
+			if item.rc > 0 {
+				assert!(item.rc == 1);
 				if try!(self.backing.get(self.column, &key)).is_some() {
 					return Err(BaseDataError::AlreadyExists(key).into());
 				}
-				try!(batch.put(self.column, &key, &value));
+				try!(batch.put(self.column, &key, &item.value));
 				inserts += 1;
 			}
-			if rc < 0 {
-				assert!(rc == -1);
+			if item.rc < 0 {
+				assert!(item.rc == -1);
 				if try!(self.backing.get(self.column, &key)).is_none() {
 					return Err(BaseDataError::NegativelyReferencedHash(key).into());
 				}
@@ -228,6 +226,8 @@ impl JournalDB for ArchiveDB {
 	fn backing(&self) -> &Arc<Database> {
 		&self.backing
 	}
+
+	fn merkle_proof(&self) -> Vec<Bytes> { self.overlay.merkle_proof() }
 }
 
 #[cfg(test)]

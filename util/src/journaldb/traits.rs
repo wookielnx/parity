@@ -37,6 +37,7 @@ pub trait JournalDB: HashDB {
 
 	/// Commit all recent insert operations and canonical historical commits' removals from the
 	/// old era to the backing database, reverting any non-canonical historical commit's inserts.
+	/// Returns the number of operations performed, and a vector of all read values since last commit.
 	fn commit(&mut self, batch: &DBTransaction, now: u64, id: &H256, end: Option<(u64, H256)>) -> Result<u32, UtilError>;
 
 	/// Commit all queued insert and delete operations without affecting any journalling -- this requires that all insertions
@@ -56,6 +57,9 @@ pub trait JournalDB: HashDB {
 
 	/// Get backing database.
 	fn backing(&self) -> &Arc<Database>;
+
+	/// Get a merkle proof of all read values since the last commit.
+	fn merkle_proof(&self) -> Vec<Bytes>;
 
 	/// Commit all changes in a single batch
 	#[cfg(test)]

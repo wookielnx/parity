@@ -192,6 +192,10 @@ impl JournalDB for RefCountedDB {
 		}
 		self.forward.commit_to_batch(&batch)
 	}
+
+	fn merkle_proof(&self) -> Vec<Bytes> {
+		self.forward.merkle_proof()
+	}
 }
 
 #[cfg(test)]

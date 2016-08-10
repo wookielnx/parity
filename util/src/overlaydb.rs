@@ -68,23 +68,23 @@ impl OverlayDB {
 	pub fn commit_to_batch(&mut self, batch: &DBTransaction) -> Result<u32, UtilError> {
 		let mut ret = 0u32;
 		let mut deletes = 0usize;
-		for i in self.overlay.drain().into_iter() {
-			let (key, (value, rc)) = i;
-			if rc != 0 {
+		for (key, item) in self.overlay.drain().into_iter() {
+			if item.rc != 0 {
+
 				match self.payload(&key) {
 					Some(x) => {
 						let (back_value, back_rc) = x;
-						let total_rc: i32 = back_rc as i32 + rc;
+						let total_rc: i32 = back_rc as i32 + item.rc;
 						if total_rc < 0 {
 							return Err(From::from(BaseDataError::NegativelyReferencedHash(key)));
 						}
 						deletes += if self.put_payload_in_batch(batch, &key, (back_value, total_rc as u32)) {1} else {0};
 					}
 					None => {
-						if rc < 0 {
+						if item.rc < 0 {
 							return Err(From::from(BaseDataError::NegativelyReferencedHash(key)));
 						}
-						self.put_payload_in_batch(batch, &key, (value, rc as u32));
+						self.put_payload_in_batch(batch, &key, (item.value, item.rc as u32));
 					}
 				};
 				ret += 1;
@@ -123,6 +123,10 @@ impl OverlayDB {
 			batch.delete(self.column, key).expect("Low-level database error. Some issue with your hard disk?");
 			true
 		}
+	}
+
+	pub fn merkle_proof(&self) -> Vec<Bytes> {
+		self.overlay.merkle_proof()
 	}
 }
 
