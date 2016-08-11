@@ -188,7 +188,8 @@ impl Client {
 			try!(db.write(batch).map_err(ClientError::Database));
 		}
 
-		if !chain.block_header(&chain.best_block_hash()).map_or(true, |h| state_db.contains(h.state_root())) {
+		// boxed clone here to prevent the memory overlay from getting polluted.
+		if !chain.block_header(&chain.best_block_hash()).map_or(true, |h| state_db.boxed_clone().contains(h.state_root())) {
 			warn!("State root not found for block #{} ({})", chain.best_block_number(), chain.best_block_hash().hex());
 		}
 
@@ -812,8 +813,22 @@ impl BlockChainClient for Client {
 				factories,
 			);
 
-			if let Err(e) = res {
-				warn!("Encountered error during block reenactment: {}", e);
+			match res {
+				Ok(lb) => {
+					let new_proof = lb.drain().merkle_proof();
+					if new_proof.len() != proof.len() {
+						// non-idempotent proof?
+						let mut set: HashSet<_> = proof.iter().cloned().collect();
+						for item in &new_proof {
+							set.remove(item);
+						}
+
+						for missing_item in set {
+							warn!("Subset is missing item: {:?}", missing_item);
+						}
+					}
+				}
+				Err(e) => warn!("Encountered error during block reenactment: {}", e),
 			}
 		}
 
