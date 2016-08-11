@@ -299,7 +299,7 @@ impl BlockChainClient for TestBlockChainClient {
 		self.execution_result.read().clone().unwrap()
 	}
 
-	fn merkle_proof(&self, _id: BlockID) -> Option<Vec<Bytes>> {
+	fn merkle_proof(&self, _id: BlockID, _reenact: bool) -> Option<Vec<Bytes>> {
 		None
 	}
 

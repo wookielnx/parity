@@ -26,6 +26,8 @@ mod earlymergedb;
 mod overlayrecentdb;
 mod refcounteddb;
 
+pub mod dummydb;
+
 /// Export the `JournalDB` trait.
 pub use self::traits::JournalDB;
 

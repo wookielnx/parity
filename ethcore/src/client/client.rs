@@ -751,7 +751,7 @@ impl BlockChainClient for Client {
 		Ok(ret)
 	}
 
-	fn merkle_proof(&self, id: BlockID) -> Option<Vec<Bytes>> {
+	fn merkle_proof(&self, id: BlockID, reenact: bool) -> Option<Vec<Bytes>> {
 		use header::Header;
 		use util::rlp::{Rlp, View};
 
@@ -780,18 +780,44 @@ impl BlockChainClient for Client {
 			false,
 			self.state_db.lock().boxed_clone(),
 			&parent_header,
-			last_hashes,
+			last_hashes.clone(),
 			self.factories.clone(),
 		);
 
-		match locked_block {
+		let proof = match locked_block {
 			Ok(lb) => {
-				Some(lb.drain().merkle_proof())
+				lb.drain().merkle_proof()
 			}
 			Err(_) => {
-				None
+				return None;
+			}
+		};
+
+		if reenact {
+			// reenact the block using a dummy, in-memory db and no accountdb mangling.
+			let dummydb = Box::new(::util::journaldb::dummydb::DummyDB::new(&proof));
+
+			let mut factories = self.factories.clone();
+			factories.accountdb = ::account_db::Factory::Plain;
+
+			let res = ::block::enact(
+				&block.header(),
+				&block.transactions(),
+				&block.uncles(),
+				&*self.engine,
+				false,
+				dummydb,
+				&parent_header,
+				last_hashes,
+				factories,
+			);
+
+			if let Err(e) = res {
+				warn!("Encountered error during block reenactment: {}", e);
 			}
 		}
+
+		Some(proof)
 	}
 
 	fn keep_alive(&self) {

@@ -166,7 +166,7 @@ pub trait BlockChainClient : Sync + Send {
 	fn replay(&self, t: TransactionID, analytics: CallAnalytics) -> Result<Executed, CallError>;
 
 	/// Generate a merkle proof for a given block.
-	fn merkle_proof(&self, block: BlockID) -> Option<Vec<Bytes>>;
+	fn merkle_proof(&self, block: BlockID, reenact: bool) -> Option<Vec<Bytes>>;
 
 	/// Returns traces matching given filter.
 	fn filter_traces(&self, filter: TraceFilter) -> Option<Vec<LocalizedTrace>>;

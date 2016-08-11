@@ -35,14 +35,6 @@ fn params_len(params: &Params) -> usize {
 	}
 }
 
-/// Deserialize single optional request parameter.
-pub fn from_params_default(params: Params) -> Result<BlockNumber, Error> {
-	match params_len(&params) {
-		0 => Ok(BlockNumber::Latest),
-		_ => from_params::<(BlockNumber,)>(params).map(|(b,)| b),
-	}
-}
-
 /// Deserialize request parameters with optional second parameter `BlockNumber` defaulting to `BlockNumber::Latest`.
 pub fn from_params_default_second<F>(params: Params) -> Result<(F, BlockNumber, ), Error> where F: serde::de::Deserialize {
 	match params_len(&params) {
