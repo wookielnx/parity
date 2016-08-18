@@ -15,6 +15,7 @@
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
 use elastic_array::*;
+use rlp::RlpArray;
 use rlp::bytes::{ToBytes, VecLike};
 use rlp::{Stream, Encoder, Encodable};
 use rlp::rlptraits::{ByteEncodable, RlpEncodable};
@@ -38,8 +39,8 @@ impl ListInfo {
 
 /// Appendable rlp encoder.
 pub struct RlpStream {
-	unfinished_lists: ElasticArray16<ListInfo>,
 	encoder: BasicEncoder,
+	unfinished_lists: ElasticArray16<ListInfo>,
 	finished_list: bool,
 }
 
@@ -183,7 +184,7 @@ impl RlpStream {
 	}
 
 	/// Drain the object and return the underlying ElasticArray.
-	pub fn drain(self) -> ElasticArray1024<u8> {
+	pub fn drain(self) -> RlpArray {
 		match self.is_finished() {
 			true => self.encoder.bytes,
 			false => panic!()
@@ -192,7 +193,7 @@ impl RlpStream {
 }
 
 struct BasicEncoder {
-	bytes: ElasticArray1024<u8>,
+	bytes: RlpArray,
 }
 
 impl Default for BasicEncoder {
@@ -203,7 +204,7 @@ impl Default for BasicEncoder {
 
 impl BasicEncoder {
 	fn new() -> Self {
-		BasicEncoder { bytes: ElasticArray1024::new() }
+		BasicEncoder { bytes: RlpArray::new() }
 	}
 
 	/// inserts list prefix at given position
@@ -222,7 +223,7 @@ impl BasicEncoder {
 	}
 
 	/// get encoded value
-	fn out(self) -> ElasticArray1024<u8> {
+	fn out(self) -> RlpArray {
 		self.bytes
 	}
 }

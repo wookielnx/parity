@@ -64,8 +64,9 @@ pub use self::untrusted_rlp::{UntrustedRlp, UntrustedRlpIterator, PayloadInfo, P
 pub use self::rlpin::{Rlp, RlpIterator};
 pub use self::rlpstream::RlpStream;
 pub use self::rlpcompression::RlpType;
-pub use elastic_array::ElasticArray1024;
 use super::hash::H256;
+/// Rlp byte buffer
+pub type RlpArray = ::elastic_array::ElasticArray256<u8>;
 
 /// The RLP encoded empty data (used to mean "null value").
 pub const NULL_RLP: [u8; 1] = [0x80; 1];
@@ -105,7 +106,7 @@ pub fn decode<T>(bytes: &[u8]) -> T where T: RlpDecodable {
 /// 	assert_eq!(out, vec![0x83, b'c', b'a', b't']);
 /// }
 /// ```
-pub fn encode<E>(object: &E) -> ElasticArray1024<u8> where E: RlpEncodable {
+pub fn encode<E>(object: &E) -> RlpArray where E: RlpEncodable {
 	let mut stream = RlpStream::new();
 	stream.append(object);
 	stream.drain()

@@ -22,9 +22,7 @@ use super::node::Node as RlpNode;
 use ::{Bytes, HashDB, H256, SHA3_NULL_RLP};
 use ::bytes::ToPretty;
 use ::nibbleslice::NibbleSlice;
-use ::rlp::{Rlp, RlpStream, View, Stream};
-
-use elastic_array::ElasticArray1024;
+use ::rlp::{Rlp, RlpStream, View, Stream, RlpArray};
 
 use std::collections::{HashSet, VecDeque};
 use std::mem;
@@ -122,7 +120,7 @@ impl Node {
 
 	// encode a node to RLP
 	// TODO: parallelize
-	fn into_rlp<F>(self, mut child_cb: F) -> ElasticArray1024<u8>
+	fn into_rlp<F>(self, mut child_cb: F) -> RlpArray
 		where F: FnMut(NodeHandle, &mut RlpStream)
 	{
 		match self {

@@ -60,7 +60,7 @@ macro_rules! impl_veclike_for_elastic_array {
 
 impl_veclike_for_elastic_array!(ElasticArray16);
 impl_veclike_for_elastic_array!(ElasticArray32);
-impl_veclike_for_elastic_array!(ElasticArray1024);
+impl_veclike_for_elastic_array!(ElasticArray256);
 
 /// Converts given type to its shortest representation in bytes
 ///
