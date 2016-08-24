@@ -1,1 +1,1 @@
-export default from './TooltipOverlay';
+export default from './tooltipOverlay';
