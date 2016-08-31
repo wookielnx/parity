@@ -33,3 +33,11 @@ pub use self::cache::CacheSize;
 pub use self::config::Config;
 pub use types::tree_route::TreeRoute;
 pub use self::import_route::ImportRoute;
+
+
+/// Result alias for blockchain errors.
+pub type Result<T> = ::std::result::Result<T, String>;
+
+/// Result alias for optional blockchain types.
+// TODO [rob] naming is hard. find a better one.
+pub type Maybe<T> = self::Result<Option<T>>;
