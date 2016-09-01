@@ -23,7 +23,7 @@
 
 use common::*;
 use engines::Engine;
-use blockchain::*;
+use blockchain::{BlockProvider, BlockChain};
 
 /// Preprocessed block data gathered in `verify_block_unordered` call
 pub struct PreverifiedBlock {

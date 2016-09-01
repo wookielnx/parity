@@ -19,7 +19,6 @@
 use bloomchain as bc;
 use util::*;
 use header::*;
-use super::extras::*;
 use transaction::*;
 use views::*;
 use receipt::Receipt;
@@ -32,6 +31,9 @@ use blockchain::{CacheSize, ImportRoute, Config};
 use db::{self, Writable, Readable, CacheUpdatePolicy};
 use cache_manager::CacheManager;
 
+use super::extras::*;
+use super::Maybe;
+
 const LOG_BLOOMS_LEVELS: usize = 3;
 const LOG_BLOOMS_ELEMENTS_PER_INDEX: usize = 16;
 
@@ -39,7 +41,7 @@ const LOG_BLOOMS_ELEMENTS_PER_INDEX: usize = 16;
 pub trait BlockProvider {
 	/// Returns true if the given block is known
 	/// (though not necessarily a part of the canon chain).
-	fn is_known(&self, hash: &H256) -> bool;
+	fn is_known(&self, hash: &H256) -> Maybe<bool>;
 
 	/// Get the first block which this chain holds.
 	/// Any queries of blocks which precede this one are not guaranteed to
@@ -47,85 +49,93 @@ pub trait BlockProvider {
 	fn first_block(&self) -> H256;
 
 	/// Get the number of the first block.
-	fn first_block_number(&self) -> BlockNumber {
-		self.block_number(&self.first_block()).expect("First block always stored; qed")
+	fn first_block_number(&self) -> super::Result<BlockNumber> {
+		Ok(try!(self.block_number(&self.first_block()))
+			.expect("First block always stored; qed"))
 	}
 
 	/// Get raw block data
-	fn block(&self, hash: &H256) -> Option<Bytes>;
+	fn block(&self, hash: &H256) -> Maybe<Bytes>;
 
 	/// Get the familial details concerning a block.
-	fn block_details(&self, hash: &H256) -> Option<BlockDetails>;
+	fn block_details(&self, hash: &H256) -> Maybe<BlockDetails>;
 
 	/// Get the hash of given block's number.
-	fn block_hash(&self, index: BlockNumber) -> Option<H256>;
+	fn block_hash(&self, index: BlockNumber) -> Maybe<H256>;
 
 	/// Get the address of transaction with given hash.
-	fn transaction_address(&self, hash: &H256) -> Option<TransactionAddress>;
+	fn transaction_address(&self, hash: &H256) -> Maybe<TransactionAddress>;
 
 	/// Get receipts of block with given hash.
-	fn block_receipts(&self, hash: &H256) -> Option<BlockReceipts>;
+	fn block_receipts(&self, hash: &H256) -> Maybe<BlockReceipts>;
 
 	/// Get the partial-header of a block.
-	fn block_header(&self, hash: &H256) -> Option<Header> {
-		self.block_header_data(hash).map(|header| decode(&header))
+	fn block_header(&self, hash: &H256) -> Maybe<Header> {
+		Ok(try!(self.block_header_data(hash))
+			.map(|header| decode(&header)))
 	}
 
 	/// Get the header RLP of a block.
-	fn block_header_data(&self, hash: &H256) -> Option<Bytes>;
+	fn block_header_data(&self, hash: &H256) -> Maybe<Bytes>;
 
 	/// Get the block body (uncles and transactions).
-	fn block_body(&self, hash: &H256) -> Option<Bytes>;
+	fn block_body(&self, hash: &H256) -> Maybe<Bytes>;
 
 	/// Get a list of uncles for a given block.
 	/// Returns None if block does not exist.
-	fn uncles(&self, hash: &H256) -> Option<Vec<Header>> {
-		self.block_body(hash).map(|bytes| BodyView::new(&bytes).uncles())
+	fn uncles(&self, hash: &H256) -> Maybe<Vec<Header>> {
+		Ok(try!(self.block_body(hash))
+			.map(|bytes| BodyView::new(&bytes).uncles()))
 	}
 
 	/// Get a list of uncle hashes for a given block.
 	/// Returns None if block does not exist.
-	fn uncle_hashes(&self, hash: &H256) -> Option<Vec<H256>> {
-		self.block_body(hash).map(|bytes| BodyView::new(&bytes).uncle_hashes())
+	fn uncle_hashes(&self, hash: &H256) -> Maybe<Vec<H256>> {
+		Ok(try!(self.block_body(hash))
+			.map(|bytes| BodyView::new(&bytes).uncle_hashes()))
 	}
 
 	/// Get the number of given block's hash.
-	fn block_number(&self, hash: &H256) -> Option<BlockNumber> {
-		self.block_details(hash).map(|details| details.number)
+	fn block_number(&self, hash: &H256) -> Maybe<BlockNumber> {
+		Ok(try!(self.block_details(hash))
+			.map(|details| details.number))
 	}
 
 	/// Get transaction with given transaction hash.
-	fn transaction(&self, address: &TransactionAddress) -> Option<LocalizedTransaction> {
-		self.block_body(&address.block_hash)
-			.and_then(|bytes| self.block_number(&address.block_hash)
-			.and_then(|n| BodyView::new(&bytes).localized_transaction_at(&address.block_hash, n, address.index)))
+	fn transaction(&self, address: &TransactionAddress) -> Maybe<LocalizedTransaction> {
+		let (body, n) = (try!(self.block_body(&address.block_hash)), try!(self.block_number(&address.block_hash)));
+
+		Ok(body.and_then(|body|
+			n.and_then(|n| BodyView::new(&body).localized_transaction_at(&address.block_hash, n, address.index)))
+		)
 	}
 
 	/// Get transaction receipt.
-	fn transaction_receipt(&self, address: &TransactionAddress) -> Option<Receipt> {
-		self.block_receipts(&address.block_hash).and_then(|br| br.receipts.into_iter().nth(address.index))
+	fn transaction_receipt(&self, address: &TransactionAddress) -> Maybe<Receipt> {
+		Ok(try!(self.block_receipts(&address.block_hash))
+			.and_then(|br| br.receipts.into_iter().nth(address.index)))
 	}
 
 	/// Get a list of transactions for a given block.
 	/// Returns None if block does not exist.
-	fn transactions(&self, hash: &H256) -> Option<Vec<LocalizedTransaction>> {
-		self.block_body(hash)
-			.and_then(|bytes| self.block_number(hash)
+	fn transactions(&self, hash: &H256) -> Maybe<Vec<LocalizedTransaction>> {
+		Ok(try!(self.block_body(hash).and_then(|bytes| self.block_number(hash)))
 			.map(|n| BodyView::new(&bytes).localized_transactions(hash, n)))
 	}
 
 	/// Returns reference to genesis hash.
-	fn genesis_hash(&self) -> H256 {
-		self.block_hash(0).expect("Genesis hash should always exist")
+	fn genesis_hash(&self) -> super::Result<H256> {
+		self.block_hash(0).map(|h| h.expect("Genesis hash always known; qed"))
 	}
 
 	/// Returns the header of the genesis block.
-	fn genesis_header(&self) -> Header {
-		self.block_header(&self.genesis_hash()).unwrap()
+	fn genesis_header(&self) -> super::Result<Header> {
+		self.block_header(&try!(self.genesis_hash()))
+			.map(|h| h.expect("Genesis header always known; qed"))
 	}
 
 	/// Returns numbers of blocks containing given bloom.
-	fn blocks_with_bloom(&self, bloom: &H2048, from_block: BlockNumber, to_block: BlockNumber) -> Vec<BlockNumber>;
+	fn blocks_with_bloom(&self, bloom: &H2048, from_block: BlockNumber, to_block: BlockNumber) -> super::Result<Vec<BlockNumber>>;
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone)]
@@ -181,7 +191,7 @@ pub struct BlockChain {
 impl BlockProvider for BlockChain {
 	/// Returns true if the given block is known
 	/// (though not necessarily a part of the canon chain).
-	fn is_known(&self, hash: &H256) -> bool {
+	fn is_known(&self, hash: &H256) -> Maybe<bool> {
 		self.db.exists_with_cache(db::COL_EXTRA, &self.block_details, hash)
 	}
 
@@ -190,27 +200,27 @@ impl BlockProvider for BlockChain {
 	}
 
 	/// Get raw block data
-	fn block(&self, hash: &H256) -> Option<Bytes> {
-		match (self.block_header_data(hash), self.block_body(hash)) {
+	fn block(&self, hash: &H256) -> Maybe<Bytes> {
+		match (try!(self.block_header_data(hash)), try!(self.block_body(hash))) {
 			(Some(header), Some(body)) => {
 				let mut block = RlpStream::new_list(3);
 				let body_rlp = Rlp::new(&body);
 				block.append_raw(&header, 1);
 				block.append_raw(body_rlp.at(0).as_raw(), 1);
 				block.append_raw(body_rlp.at(1).as_raw(), 1);
-				Some(block.out())
+				Ok(Some(block.out()))
 			},
-			_ => None,
+			_ => Ok(None),
 		}
 	}
 
 	/// Get block header data
-	fn block_header_data(&self, hash: &H256) -> Option<Bytes> {
+	fn block_header_data(&self, hash: &H256) -> Maybe<Bytes> {
 		// Check cache first
 		{
 			let read = self.block_headers.read();
 			if let Some(v) = read.get(hash) {
-				return Some(v.clone());
+				return Ok(Some(v.clone()));
 			}
 		}
 
@@ -218,15 +228,12 @@ impl BlockProvider for BlockChain {
 		{
 			let best_block = self.best_block.read();
 			if &best_block.hash == hash {
-				return Some(Rlp::new(&best_block.block).at(0).as_raw().to_vec());
+				return Ok(Some(Rlp::new(&best_block.block).at(0).as_raw().to_vec()));
 			}
 		}
 
 		// Read from DB and populate cache
-		let opt = self.db.get(db::COL_HEADERS, hash)
-			.expect("Low level database error. Some issue with disk?");
-
-		let result = match opt {
+		let result = self.db.get(db::COL_HEADERS, hash).map(|x| match x {
 			Some(b) => {
 				let bytes: Bytes = UntrustedRlp::new(&b).decompress(RlpType::Blocks).to_vec();
 				let mut write = self.block_headers.write();
@@ -234,19 +241,19 @@ impl BlockProvider for BlockChain {
 				Some(bytes)
 			},
 			None => None
-		};
+		});
 
 		self.cache_man.lock().note_used(CacheID::BlockHeader(hash.clone()));
 		result
 	}
 
 	/// Get block body data
-	fn block_body(&self, hash: &H256) -> Option<Bytes> {
+	fn block_body(&self, hash: &H256) -> Maybe<Bytes> {
 		// Check cache first
 		{
 			let read = self.block_bodies.read();
 			if let Some(v) = read.get(hash) {
-				return Some(v.clone());
+				return Ok(Some(v.clone()));
 			}
 		}
 
@@ -254,15 +261,12 @@ impl BlockProvider for BlockChain {
 		{
 			let best_block = self.best_block.read();
 			if &best_block.hash == hash {
-				return Some(Self::block_to_body(&best_block.block));
+				return Ok(Some(Self::block_to_body(&best_block.block)));
 			}
 		}
 
 		// Read from DB and populate cache
-		let opt = self.db.get(db::COL_BODIES, hash)
-			.expect("Low level database error. Some issue with disk?");
-
-		let result = match opt {
+		let result = self.db.get(db::COL_BODIES, hash).map(|x| match x {
 			Some(b) => {
 				let bytes: Bytes = UntrustedRlp::new(&b).decompress(RlpType::Blocks).to_vec();
 				let mut write = self.block_bodies.write();
@@ -270,7 +274,7 @@ impl BlockProvider for BlockChain {
 				Some(bytes)
 			},
 			None => None
-		};
+		});
 
 		self.cache_man.lock().note_used(CacheID::BlockBody(hash.clone()));
 
@@ -278,44 +282,47 @@ impl BlockProvider for BlockChain {
 	}
 
 	/// Get the familial details concerning a block.
-	fn block_details(&self, hash: &H256) -> Option<BlockDetails> {
+	fn block_details(&self, hash: &H256) -> Maybe<BlockDetails> {
 		let result = self.db.read_with_cache(db::COL_EXTRA, &self.block_details, hash);
 		self.cache_man.lock().note_used(CacheID::BlockDetails(hash.clone()));
 		result
 	}
 
 	/// Get the hash of given block's number.
-	fn block_hash(&self, index: BlockNumber) -> Option<H256> {
+	fn block_hash(&self, index: BlockNumber) -> Maybe<H256> {
 		let result = self.db.read_with_cache(db::COL_EXTRA, &self.block_hashes, &index);
 		self.cache_man.lock().note_used(CacheID::BlockHashes(index));
 		result
 	}
 
 	/// Get the address of transaction with given hash.
-	fn transaction_address(&self, hash: &H256) -> Option<TransactionAddress> {
+	fn transaction_address(&self, hash: &H256) -> Maybe<TransactionAddress> {
 		let result = self.db.read_with_cache(db::COL_EXTRA, &self.transaction_addresses, hash);
 		self.cache_man.lock().note_used(CacheID::TransactionAddresses(hash.clone()));
 		result
 	}
 
 	/// Get receipts of block with given hash.
-	fn block_receipts(&self, hash: &H256) -> Option<BlockReceipts> {
+	fn block_receipts(&self, hash: &H256) -> Maybe<BlockReceipts> {
 		let result = self.db.read_with_cache(db::COL_EXTRA, &self.block_receipts, hash);
 		self.cache_man.lock().note_used(CacheID::BlockReceipts(hash.clone()));
 		result
 	}
 
 	/// Returns numbers of blocks containing given bloom.
-	fn blocks_with_bloom(&self, bloom: &H2048, from_block: BlockNumber, to_block: BlockNumber) -> Vec<BlockNumber> {
+	fn blocks_with_bloom(&self, bloom: &H2048, from_block: BlockNumber, to_block: BlockNumber) -> super::Result<Vec<BlockNumber>> {
 		let range = from_block as bc::Number..to_block as bc::Number;
 		let chain = bc::group::BloomGroupChain::new(self.blooms_config, self);
-		chain.with_bloom(&range, &Bloom::from(bloom.clone()).into())
+
+		// TODO: alter bloomchain crate to propagate provider errors.
+		Ok(chain.with_bloom(&range, &Bloom::from(bloom.clone()).into())
 			.into_iter()
 			.map(|b| b as BlockNumber)
-			.collect()
+			.collect())
 	}
 }
 
+#[derive(Clone)]
 pub struct AncestryIter<'a> {
 	current: H256,
 	chain: &'a BlockChain,
@@ -327,16 +334,24 @@ impl<'a> Iterator for AncestryIter<'a> {
 		if self.current.is_zero() {
 			Option::None
 		} else {
-			let mut n = self.chain.block_details(&self.current).unwrap().parent;
-			mem::swap(&mut self.current, &mut n);
-			Some(n)
+			match self.chain.block_details(&self.current) {
+				Ok(Some(n)) => {
+					mem::swap(&mut self.current, &mut n);
+					Some(n)
+				}
+				Ok(None) => None,
+				Err(e) => {
+					warn!("Encountered database error while fetching details for block {:?}: {}", self.current, e);
+					None
+				}
+			}
 		}
 	}
 }
 
 impl BlockChain {
 	/// Create new instance of blockchain from given Genesis
-	pub fn new(config: Config, genesis: &[u8], db: Arc<Database>) -> BlockChain {
+	pub fn new(config: Config, genesis: &[u8], db: Arc<Database>) -> super::Result<BlockChain> {
 		// 400 is the avarage size of the key
 		let cache_man = CacheManager::new(config.pref_cache_size, config.max_cache_size, 400);
 
@@ -362,7 +377,7 @@ impl BlockChain {
 		};
 
 		// load best block
-		let best_block_hash = match bc.db.get(db::COL_EXTRA, b"best").unwrap() {
+		let best_block_hash = match try!(bc.db.get(db::COL_EXTRA, b"best")) {
 			Some(best) => {
 				H256::from_slice(&best)
 			}
@@ -389,18 +404,19 @@ impl BlockChain {
 
 				batch.put(db::COL_EXTRA, b"best", &hash);
 				batch.put(db::COL_EXTRA, b"first", &hash);
-				bc.db.write(batch).expect("Low level database error. Some issue with disk?");
+				try!(bc.db.write(batch));
 				hash
 			}
 		};
 
 		{
 			// Fetch best block details
-			let best_block_number = bc.block_number(&best_block_hash).unwrap();
-			let best_block_total_difficulty = bc.block_details(&best_block_hash).unwrap().total_difficulty;
-			let best_block_rlp = bc.block(&best_block_hash).unwrap();
+			let best_block_number = try!(bc.block_number(&best_block_hash)).expect("best block ensured to be present; qed");
+			let best_block_total_difficulty = try!(bc.block_details(&best_block_hash))
+				.expect("best block ensured to be present; qed").total_difficulty;
+			let best_block_rlp = try!(bc.block(&best_block_hash)).expect("best block ensured to be present; qed");
 
-			let raw_first = bc.db.get(db::COL_EXTRA, b"first").unwrap().map_or(Vec::new(), |v| v.to_vec());
+			let raw_first = try!(bc.db.get(db::COL_EXTRA, b"first")).map_or(Vec::new(), |v| v.to_vec());
 
 			// binary search for the first block.
 			if raw_first.is_empty() {
@@ -421,7 +437,7 @@ impl BlockChain {
 
 				let mut batch = db.transaction();
 				batch.put(db::COL_EXTRA, b"first", &hash);
-				db.write(batch).expect("Low level database error.");
+				try!(db.write(batch));
 
 				bc.first_block = hash;
 			} else {
@@ -443,22 +459,25 @@ impl BlockChain {
 
 	/// Returns true if the given parent block has given child
 	/// (though not necessarily a part of the canon chain).
-	fn is_known_child(&self, parent: &H256, hash: &H256) -> bool {
-		self.db.read_with_cache(db::COL_EXTRA, &self.block_details, parent).map_or(false, |d| d.children.contains(hash))
+	fn is_known_child(&self, parent: &H256, hash: &H256) -> super::Result<bool> {
+		self.db.read_with_cache(db::COL_EXTRA, &self.block_details, parent).map(|x|
+			x.map_or(false, |d| d.children.contains(hash))
+		)
 	}
 
 	/// Rewind to a previous block
 	#[cfg(test)]
-	fn rewind(&self) -> Option<H256> {
+	fn rewind(&self) -> Maybe<H256> {
 		use db::Key;
-		let mut batch =self.db.transaction();
+
+		let mut batch = self.db.transaction();
 		// track back to the best block we have in the blocks database
-		if let Some(best_block_hash) = self.db.get(db::COL_EXTRA, b"best").unwrap() {
+		if let Some(best_block_hash) = try!(self.db.get(db::COL_EXTRA, b"best")) {
 			let best_block_hash = H256::from_slice(&best_block_hash);
-			if best_block_hash == self.genesis_hash() {
-				return None;
+			if best_block_hash == try!(self.genesis_hash()) {
+				return Ok(None);
 			}
-			if let Some(extras) = self.db.read(db::COL_EXTRA, &best_block_hash) as Option<BlockDetails> {
+			if let Some(extras) = try!(self.db.read(db::COL_EXTRA, &best_block_hash)) as Option<BlockDetails> {
 				type DetailsKey = Key<BlockDetails, Target=H264>;
 				batch.delete(db::COL_EXTRA, &(DetailsKey::key(&best_block_hash)));
 				let hash = extras.parent;
@@ -470,8 +489,9 @@ impl BlockChain {
 				}
 				batch.put(db::COL_EXTRA, b"best", &hash);
 
-				let best_block_total_difficulty = self.block_details(&hash).unwrap().total_difficulty;
-				let best_block_rlp = self.block(&hash).unwrap();
+				let best_block_total_difficulty = try!(self.block_details(&hash))
+					.expect("best block always stored").total_difficulty;
+				let best_block_rlp = try!(self.block(&hash)).expect("best block always stored");
 
 				let mut best_block = self.best_block.write();
 				*best_block = BestBlock {
@@ -481,21 +501,22 @@ impl BlockChain {
 					block: best_block_rlp,
 				};
 				// update parent extras
-				if let Some(mut details) = self.db.read(db::COL_EXTRA, &hash) as Option<BlockDetails> {
+				if let Some(mut details) = try!(self.db.read(db::COL_EXTRA, &hash)) as Option<BlockDetails> {
 					details.children.clear();
 					batch.write(db::COL_EXTRA, &hash, &details);
 				}
-				self.db.write(batch).expect("Writing to db failed");
+
+				try!(self.db.write(batch));
 				self.block_details.write().clear();
 				self.block_hashes.write().clear();
 				self.block_headers.write().clear();
 				self.block_bodies.write().clear();
 				self.block_receipts.write().clear();
-				return Some(hash);
+				return Ok(Some(hash));
 			}
 		}
 
-		None
+		Ok(None)
 	}
 
 	/// Returns a tree route between `from` and `to`, which is a tuple of:
@@ -540,12 +561,12 @@ impl BlockChain {
 	///   ```json
 	///   { blocks: [B4, B3, A3, A4], ancestor: A2, index: 2 }
 	///   ```
-	pub fn tree_route(&self, from: H256, to: H256) -> TreeRoute {
+	pub fn tree_route(&self, from: H256, to: H256) -> super::Result<TreeRoute> {
 		let mut from_branch = vec![];
 		let mut to_branch = vec![];
 
-		let mut from_details = self.block_details(&from).unwrap_or_else(|| panic!("0. Expected to find details for block {:?}", from));
-		let mut to_details = self.block_details(&to).unwrap_or_else(|| panic!("1. Expected to find details for block {:?}", to));
+		let mut from_details = try!(self.block_details(&from));
+		let mut to_details = try!(self.block_details(&to));
 		let mut current_from = from;
 		let mut current_to = to;
 
@@ -553,13 +574,13 @@ impl BlockChain {
 		while from_details.number > to_details.number {
 			from_branch.push(current_from);
 			current_from = from_details.parent.clone();
-			from_details = self.block_details(&from_details.parent).unwrap_or_else(|| panic!("2. Expected to find details for block {:?}", from_details.parent));
+			from_details = try!(self.block_details(&from_details.parent));
 		}
 
 		while to_details.number > from_details.number {
 			to_branch.push(current_to);
 			current_to = to_details.parent.clone();
-			to_details = self.block_details(&to_details.parent).unwrap_or_else(|| panic!("3. Expected to find details for block {:?}", to_details.parent));
+			to_details = try!(self.block_details(&to_details.parent));
 		}
 
 		assert_eq!(from_details.number, to_details.number);
@@ -568,22 +589,22 @@ impl BlockChain {
 		while current_from != current_to {
 			from_branch.push(current_from);
 			current_from = from_details.parent.clone();
-			from_details = self.block_details(&from_details.parent).unwrap_or_else(|| panic!("4. Expected to find details for block {:?}", from_details.parent));
+			from_details = try!(self.block_details(&from_details.parent));
 
 			to_branch.push(current_to);
 			current_to = to_details.parent.clone();
-			to_details = self.block_details(&to_details.parent).unwrap_or_else(|| panic!("5. Expected to find details for block {:?}", from_details.parent));
+			to_details = try!(self.block_details(&to_details.parent));
 		}
 
 		let index = from_branch.len();
 
 		from_branch.extend(to_branch.into_iter().rev());
 
-		TreeRoute {
+		Ok(TreeRoute {
 			blocks: from_branch,
 			ancestor: current_from,
 			index: index
-		}
+		})
 	}
 
 	/// Inserts a verified, known block from the canonical chain.
@@ -593,13 +614,13 @@ impl BlockChain {
 	///
 	/// Supply a dummy parent total difficulty when the parent block may not be in the chain.
 	/// Returns true if the block is disconnected.
-	pub fn insert_snapshot_block(&self, bytes: &[u8], receipts: Vec<Receipt>, parent_td: Option<U256>, is_best: bool) -> bool {
+	pub fn insert_snapshot_block(&self, bytes: &[u8], receipts: Vec<Receipt>, parent_td: Option<U256>, is_best: bool) -> super::Result<bool> {
 		let block = BlockView::new(bytes);
 		let header = block.header_view();
 		let hash = header.sha3();
 
-		if self.is_known(&hash) {
-			return false;
+		if try!(self.is_known(&hash)) {
+			return Ok(false);
 		}
 
 		assert!(self.pending_best_block.read().is_none());
@@ -607,14 +628,15 @@ impl BlockChain {
 		let mut batch = self.db.transaction();
 
 		let block_rlp = UntrustedRlp::new(bytes);
-		let compressed_header = block_rlp.at(0).unwrap().compress(RlpType::Blocks);
+		let compressed_header = block_rlp.at(0)
+			.expect("block RLP always has header; qed").compress(RlpType::Blocks);
 		let compressed_body = UntrustedRlp::new(&Self::block_to_body(bytes)).compress(RlpType::Blocks);
 
 		// store block in db
 		batch.put(db::COL_HEADERS, &hash, &compressed_header);
 		batch.put(db::COL_BODIES, &hash, &compressed_body);
 
-		let maybe_parent = self.block_details(&header.parent_hash());
+		let maybe_parent = try!(self.block_details(&header.parent_hash()));
 
 		if let Some(parent_details) = maybe_parent {
 			// parent known to be in chain.
@@ -626,17 +648,17 @@ impl BlockChain {
 			};
 
 			self.prepare_update(&mut batch, ExtrasUpdate {
-				block_hashes: self.prepare_block_hashes_update(bytes, &info),
-				block_details: self.prepare_block_details_update(bytes, &info),
+				block_hashes: try!(self.prepare_block_hashes_update(bytes, &info)),
+				block_details: try!(self.prepare_block_details_update(bytes, &info)),
 				block_receipts: self.prepare_block_receipts_update(receipts, &info),
 				transactions_addresses: self.prepare_transaction_addresses_update(bytes, &info),
-				blocks_blooms: self.prepare_block_blooms_update(bytes, &info),
+				blocks_blooms: try!(self.prepare_block_blooms_update(bytes, &info)),
 				info: info,
 				block: bytes
 			}, is_best);
-			self.db.write(batch).unwrap();
+			try!(self.db.write(batch));
 
-			false
+			Ok(false)
 		} else {
 			// parent not in the chain yet. we need the parent difficulty to proceed.
 			let d = parent_td
@@ -660,17 +682,17 @@ impl BlockChain {
 			update.insert(hash, block_details);
 
 			self.prepare_update(&mut batch, ExtrasUpdate {
-				block_hashes: self.prepare_block_hashes_update(bytes, &info),
+				block_hashes: try!(self.prepare_block_hashes_update(bytes, &info)),
 				block_details: update,
 				block_receipts: self.prepare_block_receipts_update(receipts, &info),
 				transactions_addresses: self.prepare_transaction_addresses_update(bytes, &info),
-				blocks_blooms: self.prepare_block_blooms_update(bytes, &info),
+				blocks_blooms: try!(self.prepare_block_blooms_update(bytes, &info)),
 				info: info,
 				block: bytes,
 			}, is_best);
-			self.db.write(batch).unwrap();
+			try!(self.db.write(batch));
 
-			true
+			Ok(true)
 		}
 	}
 
@@ -678,9 +700,9 @@ impl BlockChain {
 	/// the chain and the child's parent is this block.
 	///
 	/// Used in snapshots to glue the chunks together at the end.
-	pub fn add_child(&self, block_hash: H256, child_hash: H256) {
-		let mut parent_details = self.block_details(&block_hash)
-			.unwrap_or_else(|| panic!("Invalid block hash: {:?}", block_hash));
+	pub fn add_child(&self, block_hash: H256, child_hash: H256) -> super::Result<()> {
+		let mut parent_details = try!(self.block_details(&block_hash))
+			.expect("parent block always in chain during snapshot restoration; qed");
 
 		let mut batch = self.db.transaction();
 		parent_details.children.push(child_hash);
@@ -688,27 +710,28 @@ impl BlockChain {
 		let mut update = HashMap::new();
 		update.insert(block_hash, parent_details);
 
-
 		let mut write_details = self.block_details.write();
 		batch.extend_with_cache(db::COL_EXTRA, &mut *write_details, update, CacheUpdatePolicy::Overwrite);
 
 		self.cache_man.lock().note_used(CacheID::BlockDetails(block_hash));
 
-		self.db.write(batch).unwrap();
+		try!(self.db.write(batch));
+
+		Ok(())
 	}
 
 	#[cfg_attr(feature="dev", allow(similar_names))]
 	/// Inserts the block into backing cache database.
 	/// Expects the block to be valid and already verified.
 	/// If the block is already known, does nothing.
-	pub fn insert_block(&self, batch: &mut DBTransaction, bytes: &[u8], receipts: Vec<Receipt>) -> ImportRoute {
+	pub fn insert_block(&self, batch: &mut DBTransaction, bytes: &[u8], receipts: Vec<Receipt>) -> super::Result<ImportRoute> {
 		// create views onto rlp
 		let block = BlockView::new(bytes);
 		let header = block.header_view();
 		let hash = header.sha3();
 
-		if self.is_known_child(&header.parent_hash(), &hash) {
-			return ImportRoute::none();
+		if try!(self.is_known_child(&header.parent_hash(), &hash)) {
+			return Ok(ImportRoute::none());
 		}
 
 		assert!(self.pending_best_block.read().is_none());
@@ -717,23 +740,23 @@ impl BlockChain {
 		batch.put_compressed(db::COL_HEADERS, &hash, block.header_rlp().as_raw().to_vec());
 		batch.put_compressed(db::COL_BODIES, &hash, Self::block_to_body(bytes));
 
-		let info = self.block_info(&header);
+		let info = try!(self.block_info(&header));
 
 		if let BlockLocation::BranchBecomingCanonChain(ref d) = info.location {
 			info!(target: "reorg", "Reorg to {} ({} {} {})",
 				Colour::Yellow.bold().paint(format!("#{} {}", info.number, info.hash)),
 				Colour::Red.paint(d.retracted.iter().join(" ")),
-				Colour::White.paint(format!("#{} {}", self.block_details(&d.ancestor).expect("`ancestor` is in the route; qed").number, d.ancestor)),
+				Colour::White.paint(format!("#{} {}", try!(self.block_details(&d.ancestor)).expect("`ancestor` is in the route; qed").number, d.ancestor)),
 				Colour::Green.paint(d.enacted.iter().join(" "))
 			);
 		}
 
 		self.prepare_update(batch, ExtrasUpdate {
-			block_hashes: self.prepare_block_hashes_update(bytes, &info),
-			block_details: self.prepare_block_details_update(bytes, &info),
+			block_hashes: try!(self.prepare_block_hashes_update(bytes, &info)),
+			block_details: try!(self.prepare_block_details_update(bytes, &info)),
 			block_receipts: self.prepare_block_receipts_update(receipts, &info),
 			transactions_addresses: self.prepare_transaction_addresses_update(bytes, &info),
-			blocks_blooms: self.prepare_block_blooms_update(bytes, &info),
+			blocks_blooms: try!(self.prepare_block_blooms_update(bytes, &info)),
 			info: info.clone(),
 			block: bytes,
 		}, true);
@@ -742,11 +765,11 @@ impl BlockChain {
 	}
 
 	/// Get inserted block info which is critical to prepare extras updates.
-	fn block_info(&self, header: &HeaderView) -> BlockInfo {
+	fn block_info(&self, header: &HeaderView) -> super::Result<BlockInfo> {
 		let hash = header.sha3();
 		let number = header.number();
 		let parent_hash = header.parent_hash();
-		let parent_details = self.block_details(&parent_hash).unwrap_or_else(|| panic!("Invalid parent hash: {:?}", parent_hash));
+		let parent_details = try!(self.block_details(&parent_hash)).expect("parent is always in chain; qed");
 		let total_difficulty = parent_details.total_difficulty + header.difficulty();
 		let is_new_best = total_difficulty > self.best_block_total_difficulty();
 
@@ -759,14 +782,14 @@ impl BlockChain {
 				// are moved to "canon chain"
 				// find the route between old best block and the new one
 				let best_hash = self.best_block_hash();
-				let route = self.tree_route(best_hash, parent_hash);
+				let route = try!(self.tree_route(best_hash, parent_hash));
 
 				assert_eq!(number, parent_details.number + 1);
 
 				match route.blocks.len() {
 					0 => BlockLocation::CanonChain,
 					_ => {
-						let retracted = route.blocks.iter().take(route.index).cloned().collect::<Vec<_>>().into_iter().collect::<Vec<_>>();
+						let retracted = route.blocks.iter().take(route.index).cloned().collect::<Vec<_>>();
 						let enacted = route.blocks.into_iter().skip(route.index).collect::<Vec<_>>();
 						BlockLocation::BranchBecomingCanonChain(BranchBecomingCanonChainData {
 							ancestor: route.ancestor,
@@ -873,31 +896,35 @@ impl BlockChain {
 	}
 
 	/// Given a block's `parent`, find every block header which represents a valid possible uncle.
-	pub fn find_uncle_headers(&self, parent: &H256, uncle_generations: usize) -> Option<Vec<Header>> {
-		self.find_uncle_hashes(parent, uncle_generations).map(|v| v.into_iter().filter_map(|h| self.block_header(&h)).collect())
+	pub fn find_uncle_headers(&self, parent: &H256, uncle_generations: usize) -> Maybe<Vec<Header>> {
+		Ok(try!(self.find_uncle_hashes(parent, uncle_generations))
+			.map(|v| v.into_iter().filter_map(|h| self.block_header(&h)).collect()))
 	}
 
 	/// Given a block's `parent`, find every block hash which represents a valid possible uncle.
-	pub fn find_uncle_hashes(&self, parent: &H256, uncle_generations: usize) -> Option<Vec<H256>> {
-		if !self.is_known(parent) { return None; }
+	pub fn find_uncle_hashes(&self, parent: &H256, uncle_generations: usize) -> Maybe<Vec<H256>> {
+		if !self.is_known(parent) { return Ok(None); }
 
 		let mut excluded = HashSet::new();
-		for a in self.ancestry_iter(parent.clone()).unwrap().take(uncle_generations) {
-			excluded.extend(self.uncle_hashes(&a).unwrap().into_iter());
+		let ancestry = self.ancestry_iter(parent.clone())
+			.expect("ancestry iterator always exists if block is known; qed");
+
+		for a in ancestry.clone().take(uncle_generations) {
+			let uncle_hashes = try!(self.uncle_hashes(&a)).expect("blocks in ancestry are always stored; qed");
+			excluded.extend(uncle_hashes);
 			excluded.insert(a);
 		}
 
 		let mut ret = Vec::new();
-		for a in self.ancestry_iter(parent.clone()).unwrap().skip(1).take(uncle_generations) {
-			ret.extend(self.block_details(&a).unwrap().children.iter()
-				.filter(|h| !excluded.contains(h))
-			);
+		for a in ancestry.skip(1).take(uncle_generations) {
+			let details = try!(self.block_details(&a)).expect("details always exist for blocks from ancestry; qed");
+			ret.extend(details.children.iter().filter(|h| !excluded.contains(h)))
 		}
-		Some(ret)
+		Ok(Some(ret))
 	}
 
 	/// This function returns modified block hashes.
-	fn prepare_block_hashes_update(&self, block_bytes: &[u8], info: &BlockInfo) -> HashMap<BlockNumber, H256> {
+	fn prepare_block_hashes_update(&self, block_bytes: &[u8], info: &BlockInfo) -> super::Result<HashMap<BlockNumber, H256>> {
 		let mut block_hashes = HashMap::new();
 		let block = BlockView::new(block_bytes);
 		let header = block.header_view();
@@ -909,7 +936,7 @@ impl BlockChain {
 				block_hashes.insert(number, info.hash.clone());
 			},
 			BlockLocation::BranchBecomingCanonChain(ref data) => {
-				let ancestor_number = self.block_number(&data.ancestor).expect("Block number of ancestor is always in DB");
+				let ancestor_number = try!(self.block_number(&data.ancestor)).expect("Block number of ancestor is always in DB");
 				let start_number = ancestor_number + 1;
 
 				for (index, hash) in data.enacted.iter().cloned().enumerate() {
@@ -920,18 +947,18 @@ impl BlockChain {
 			}
 		}
 
-		block_hashes
+		Ok(block_hashes)
 	}
 
 	/// This function returns modified block details.
 	/// Uses the given parent details or attempts to load them from the database.
-	fn prepare_block_details_update(&self, block_bytes: &[u8], info: &BlockInfo) -> HashMap<H256, BlockDetails> {
+	fn prepare_block_details_update(&self, block_bytes: &[u8], info: &BlockInfo) -> super::Result<HashMap<H256, BlockDetails>> {
 		let block = BlockView::new(block_bytes);
 		let header = block.header_view();
 		let parent_hash = header.parent_hash();
 
 		// update parent
-		let mut parent_details = self.block_details(&parent_hash).unwrap_or_else(|| panic!("Invalid parent hash: {:?}", parent_hash));
+		let mut parent_details = try!(self.block_details(&parent_hash)).expect("Parent details always exist for inserted block; qed");
 		parent_details.children.push(info.hash.clone());
 
 		// create current block details
@@ -946,7 +973,7 @@ impl BlockChain {
 		let mut block_details = HashMap::new();
 		block_details.insert(parent_hash, parent_details);
 		block_details.insert(info.hash.clone(), details);
-		block_details
+		Ok(block_details)
 	}
 
 	/// This function returns modified block receipts.
@@ -981,14 +1008,14 @@ impl BlockChain {
 	/// keys are BloomIndexes. BloomIndex represents bloom location on one
 	/// of these layers.
 	///
-	/// To reduce number of queries to databse, block blooms are stored
+	/// To reduce number of queries to database, block blooms are stored
 	/// in BlocksBlooms structure which contains info about several
 	/// (BLOOM_INDEX_SIZE, currently 16) consecutive blocks blooms.
 	///
 	/// Later, BloomIndexer is used to map bloom location on filter layer (BloomIndex)
 	/// to bloom location in database (BlocksBloomLocation).
 	///
-	fn prepare_block_blooms_update(&self, block_bytes: &[u8], info: &BlockInfo) -> HashMap<LogGroupPosition, BloomGroup> {
+	fn prepare_block_blooms_update(&self, block_bytes: &[u8], info: &BlockInfo) -> super::Result<HashMap<LogGroupPosition, BloomGroup>> {
 		let block = BlockView::new(block_bytes);
 		let header = block.header_view();
 
@@ -1004,16 +1031,16 @@ impl BlockChain {
 				}
 			},
 			BlockLocation::BranchBecomingCanonChain(ref data) => {
-				let ancestor_number = self.block_number(&data.ancestor).unwrap();
+				let ancestor_number = try!(self.block_number(&data.ancestor)).expect("branch ancestor always stored; qed");
 				let start_number = ancestor_number + 1;
 				let range = start_number as bc::Number..self.best_block_number() as bc::Number;
 
-				let mut blooms: Vec<bc::Bloom> = data.enacted.iter()
-					.map(|hash| self.block_header_data(hash).unwrap())
-					.map(|bytes| HeaderView::new(&bytes).log_bloom())
-					.map(Bloom::from)
-					.map(Into::into)
-					.collect();
+				let mut blooms: Vec<bc::Bloom> = Vec::with_capacity(data.enacted.len());
+				for hash in &data.enacted {
+					let raw = try!(self.block_header_data(hash)).expect("enacted blocks always stored; qed");
+					let bloom: Bloom = HeaderView::new(&raw).log_bloom().into();
+					blooms.push(bloom.into());
+				}
 
 				blooms.push(Bloom::from(header.log_bloom()).into());
 
