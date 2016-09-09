@@ -11,3 +11,4 @@ ethcore-devtools = { path = "../../devtools" }
 nanomsg = { git = "https://github.com/ethcore/nanomsg.rs.git" }
 ethcore-util = { path = "../../util" }
 semver = "0.2"
+futures = "0.1"

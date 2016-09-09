@@ -20,8 +20,12 @@ extern crate ethcore_devtools as devtools;
 extern crate semver;
 extern crate nanomsg;
 extern crate ethcore_util as util;
+extern crate futures;
 
 pub mod interface;
 pub mod binary;
+pub mod dispatcher;
+
 pub use interface::{IpcInterface, IpcSocket, invoke, IpcConfig, Handshake, Error, WithSocket};
 pub use binary::{BinaryConvertable, BinaryConvertError, BinHandshake};
+
