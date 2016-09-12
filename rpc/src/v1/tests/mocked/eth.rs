@@ -27,7 +27,9 @@ use ethcore::receipt::LocalizedReceipt;
 use ethcore::transaction::{Transaction, Action};
 use ethcore::miner::{ExternalMiner, MinerService};
 use ethsync::SyncState;
-use v1::{Eth, EthClient, EthClientOptions, EthSigning, EthSigningUnsafeClient};
+
+use v1::{EthClient, EthClientOptions, EthSigning, EthSigningUnsafeClient};
+use v1::traits::eth::EthRpc;
 use v1::tests::helpers::{TestSyncProvider, Config, TestMinerService};
 use rustc_serialize::hex::ToHex;
 use time::get_time;

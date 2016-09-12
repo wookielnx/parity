@@ -30,7 +30,7 @@ use jsonrpc_core::*;
 use util::{H256, Address, FixedHash, U256, H64, Uint};
 use util::sha3::*;
 use util::{FromHex, Mutex};
-use rlp::{self, UntrustedRlp, View};
+use rlp;
 use ethcore::account_provider::AccountProvider;
 use ethcore::client::{MiningBlockChainClient, BlockID, TransactionID, UncleID};
 use ethcore::header::Header as BlockHeader;
@@ -42,10 +42,9 @@ use ethcore::log_entry::LogEntry;
 use ethcore::filter::Filter as EthcoreFilter;
 use self::ethash::SeedHashCompute;
 use v1::traits::Eth;
-use v1::types::{Block, BlockTransactions, BlockNumber, Bytes, SyncStatus, SyncInfo, Transaction, CallRequest, Index, Filter, Log, Receipt, H64 as RpcH64, H256 as RpcH256, H160 as RpcH160, U256 as RpcU256};
+use v1::types::{Block, BlockTransactions, BlockNumber, Bytes, SyncStatus, SyncInfo, Transaction, CallRequest, Filter, Log, Receipt};
 use v1::helpers::{CallRequest as CRequest, errors};
 use v1::helpers::dispatch::{default_gas_price, dispatch_transaction};
-use v1::helpers::params::{expect_no_params, from_params_default_second, from_params_default_third};
 
 /// Eth RPC options
 pub struct EthClientOptions {
@@ -100,13 +99,13 @@ impl<C, S: ?Sized, M, EM> EthClient<C, S, M, EM> where
 		}
 	}
 
-	fn block(&self, id: BlockID, include_txs: bool) -> Result<Value, Error> {
+	fn block(&self, id: BlockID, include_txs: bool) -> Result<Option<Block>, Error> {
 		let client = take_weak!(self.client);
 		match (client.block(id.clone()), client.block_total_difficulty(id)) {
 			(Some(bytes), Some(total_difficulty)) => {
 				let block_view = BlockView::new(&bytes);
 				let view = block_view.header_view();
-				let block = Block {
+				Ok(Some(Block {
 					hash: Some(view.sha3().into()),
 					size: Some(bytes.len().into()),
 					parent_hash: view.parent_hash().into(),
@@ -130,32 +129,28 @@ impl<C, S: ?Sized, M, EM> EthClient<C, S, M, EM> where
 						false => BlockTransactions::Hashes(block_view.transaction_hashes().into_iter().map(Into::into).collect()),
 					},
 					extra_data: Bytes::new(view.extra_data())
-				};
-				Ok(to_value(&block))
+				}))
 			},
-			_ => Ok(Value::Null)
+			_ => Ok(None)
 		}
 	}
 
-	fn transaction(&self, id: TransactionID) -> Result<Value, Error> {
-		match take_weak!(self.client).transaction(id) {
-			Some(t) => Ok(to_value(&Transaction::from(t))),
-			None => Ok(Value::Null)
-		}
+	fn transaction(&self, id: TransactionID) -> Result<Option<Transaction>, Error> {
+		Ok(take_weak!(self.client).transaction(id).map(Into::into))
 	}
 
-	fn uncle(&self, id: UncleID) -> Result<Value, Error> {
+	fn uncle(&self, id: UncleID) -> Result<Option<Block>, Error> {
 		let client = take_weak!(self.client);
 		let uncle: BlockHeader = match client.uncle(id) {
 			Some(rlp) => rlp::decode(&rlp),
-			None => { return Ok(Value::Null); }
+			None => { return Ok(None); }
 		};
 		let parent_difficulty = match client.block_total_difficulty(BlockID::Hash(uncle.parent_hash().clone())) {
 			Some(difficulty) => difficulty,
-			None => { return Ok(Value::Null); }
+			None => { return Ok(None); }
 		};
 
-		let block = Block {
+		Ok(Some(Block {
 			hash: Some(uncle.hash().into()),
 			size: None,
 			parent_hash: uncle.parent_hash().clone().into(),
@@ -176,8 +171,7 @@ impl<C, S: ?Sized, M, EM> EthClient<C, S, M, EM> where
 			seal_fields: uncle.seal().clone().into_iter().map(|f| rlp::decode(&f)).map(Bytes::new).collect(),
 			uncles: vec![],
 			transactions: BlockTransactions::Hashes(vec![]),
-		};
-		Ok(to_value(&block))
+		}))
 	}
 
 	fn sign_call(&self, request: CRequest) -> Result<SignedTransaction, Error> {
@@ -215,19 +209,6 @@ pub fn pending_logs<M>(miner: &M, filter: &EthcoreFilter) -> Vec<Log> where M: M
 
 const MAX_QUEUE_SIZE_TO_MINE_ON: usize = 4;	// because uncles go back 6.
 
-impl<C, S: ?Sized, M, EM> EthClient<C, S, M, EM> where
-	C: MiningBlockChainClient + 'static,
-	S: SyncProvider + 'static,
-	M: MinerService + 'static,
-	EM: ExternalMinerService + 'static {
-
-	fn active(&self) -> Result<(), Error> {
-		// TODO: only call every 30s at most.
-		take_weak!(self.client).keep_alive();
-		Ok(())
-	}
-}
-
 #[cfg(windows)]
 static SOLC: &'static str = "solc.exe";
 
@@ -240,17 +221,17 @@ impl<C, S: ?Sized, M, EM> Eth for EthClient<C, S, M, EM> where
 	M: MinerService + 'static,
 	EM: ExternalMinerService + 'static {
 
-	fn protocol_version(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		try!(expect_no_params(params));
-
-		Ok(Value::String(format!("{}", take_weak!(self.sync).status().protocol_version).to_owned()))
+	fn active(&self) -> Result<(), Error> {
+		// TODO: only call every 30s at most.
+		take_weak!(self.client).keep_alive();
+		Ok(())
 	}
 
-	fn syncing(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		try!(expect_no_params(params));
+	fn protocol_version(&self) -> Result<u32, Error> {
+		Ok(take_weak!(self.sync).status().protocol_version as u32)
+	}
 
+	fn syncing(&self) -> Result<SyncStatus, Error> {
 		let status = take_weak!(self.sync).status();
 		let res = match status.state {
 			SyncState::Idle => SyncStatus::None,
@@ -271,256 +252,180 @@ impl<C, S: ?Sized, M, EM> Eth for EthClient<C, S, M, EM> where
 				}
 			}
 		};
-		Ok(to_value(&res))
+
+		Ok(res)
 	}
 
-	fn author(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		try!(expect_no_params(params));
-
-		Ok(to_value(&RpcH160::from(take_weak!(self.miner).author())))
+	fn author(&self) -> Result<Address, Error> {
+		Ok(take_weak!(self.miner).author())
 	}
 
-	fn is_mining(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		try!(expect_no_params(params));
-
-		Ok(to_value(&(take_weak!(self.miner).is_sealing())))
+	fn is_mining(&self) -> Result<bool, Error> {
+		Ok(take_weak!(self.miner).is_sealing())
 	}
 
-	fn hashrate(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		try!(expect_no_params(params));
-
-		Ok(to_value(&RpcU256::from(self.external_miner.hashrate())))
+	fn hashrate(&self) -> Result<U256, Error> {
+		Ok(self.external_miner.hashrate())
 	}
 
-	fn gas_price(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		try!(expect_no_params(params));
-
+	fn gas_price(&self) -> Result<U256, Error> {
 		let (client, miner) = (take_weak!(self.client), take_weak!(self.miner));
-		Ok(to_value(&RpcU256::from(default_gas_price(&*client, &*miner))))
+		Ok(default_gas_price(&*client, &*miner))
 	}
 
-	fn accounts(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		try!(expect_no_params(params));
-
+	fn accounts(&self) -> Result<Vec<Address>, Error> {
 		let store = take_weak!(self.accounts);
 		let accounts = try!(store.accounts().map_err(|e| errors::internal("Could not fetch accounts.", e)));
-		Ok(to_value(&accounts.into_iter().map(Into::into).collect::<Vec<RpcH160>>()))
+		Ok(accounts)
 	}
 
-	fn block_number(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		try!(expect_no_params(params));
-
-		Ok(to_value(&RpcU256::from(take_weak!(self.client).chain_info().best_block_number)))
+	fn block_number(&self) -> Result<u64, Error> {
+		Ok(take_weak!(self.client).chain_info().best_block_number)
 	}
 
-	fn balance(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params_default_second(params)
-			.and_then(|(address, block_number,)| {
-				let address: Address = RpcH160::into(address);
-				match block_number {
-					BlockNumber::Pending => Ok(to_value(&RpcU256::from(take_weak!(self.miner).balance(&*take_weak!(self.client), &address)))),
-					id => match take_weak!(self.client).balance(&address, id.into()) {
-						Some(balance) => Ok(to_value(&RpcU256::from(balance))),
-						None => Err(errors::state_pruned()),
-					}
-				}
-			})
+	fn balance(&self, address: &Address, at: BlockNumber) -> Result<U256, Error> {
+		match at {
+			BlockNumber::Pending => Ok(take_weak!(self.miner).balance(&*take_weak!(self.client), &address)),
+			id => match take_weak!(self.client).balance(&address, id.into()) {
+				Some(balance) => Ok(balance),
+				None => Err(errors::state_pruned()),
+			}
+		}
 	}
 
-	fn storage_at(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params_default_third::<RpcH160, RpcU256>(params)
-			.and_then(|(address, position, block_number,)| {
-				let address: Address = RpcH160::into(address);
-				let position: U256 = RpcU256::into(position);
-				match block_number {
-					BlockNumber::Pending => Ok(to_value(&RpcU256::from(take_weak!(self.miner).storage_at(&*take_weak!(self.client), &address, &H256::from(position))))),
-					id => match take_weak!(self.client).storage_at(&address, &H256::from(position), id.into()) {
-						Some(s) => Ok(to_value(&RpcH256::from(s))),
-						None => Err(errors::state_pruned()),
-					}
-				}
-			})
-
+	fn storage_at(&self, address: &Address, key: &H256, at: BlockNumber) -> Result<H256, Error> {
+		match at {
+			BlockNumber::Pending => Ok(take_weak!(self.miner).storage_at(&*take_weak!(self.client), address, key)),
+			id => match take_weak!(self.client).storage_at(address, key, id.into()) {
+				Some(s) => Ok(s),
+				None => Err(errors::state_pruned()),
+			}
+		}
 	}
 
-	fn transaction_count(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params_default_second(params)
-			.and_then(|(address, block_number,)| {
-				let address: Address = RpcH160::into(address);
-				match block_number {
-					BlockNumber::Pending => Ok(to_value(&RpcU256::from(take_weak!(self.miner).nonce(&*take_weak!(self.client), &address)))),
-					id => match take_weak!(self.client).nonce(&address, id.into()) {
-						Some(nonce) => Ok(to_value(&RpcU256::from(nonce))),
-						None => Err(errors::state_pruned()),
-					}
-				}
-			})
+	fn transaction_count(&self, address: &Address, at: BlockNumber) -> Result<U256, Error> {
+		match at {
+			BlockNumber::Pending => Ok(take_weak!(self.miner).nonce(&*take_weak!(self.client), &address)),
+			id => match take_weak!(self.client).nonce(&address, id.into()) {
+				Some(nonce) => Ok(nonce),
+				None => Err(errors::state_pruned()),
+			}
+		}
 	}
 
-	fn block_transaction_count_by_hash(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(RpcH256,)>(params)
-			.and_then(|(hash,)| // match
-				take_weak!(self.client).block(BlockID::Hash(hash.into()))
-					.map_or(Ok(Value::Null), |bytes| Ok(to_value(&RpcU256::from(BlockView::new(&bytes).transactions_count())))))
+	fn block_transaction_count_by_hash(&self, hash: &H256) -> Result<Option<usize>, Error> {
+		Ok(take_weak!(self.client)
+			.block(BlockID::Hash(hash.clone()))
+			.map(|bytes| BlockView::new(&bytes).transactions_count()))
 	}
 
-	fn block_transaction_count_by_number(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(BlockNumber,)>(params)
-			.and_then(|(block_number,)| match block_number {
-				BlockNumber::Pending => Ok(to_value(
-					&RpcU256::from(take_weak!(self.miner).status().transactions_in_pending_block)
-				)),
-				_ => take_weak!(self.client).block(block_number.into())
-						.map_or(Ok(Value::Null), |bytes| Ok(to_value(&RpcU256::from(BlockView::new(&bytes).transactions_count()))))
-			})
+	fn block_transaction_count_by_number(&self, number: BlockNumber) -> Result<Option<usize>, Error> {
+		match number {
+			BlockNumber::Pending => Ok(Some(take_weak!(self.miner).status().transactions_in_pending_block)),
+			number => Ok(take_weak!(self.client).block(number.into())
+				.map(|bytes| BlockView::new(&bytes).transactions_count()))
+		}
 	}
 
-	fn block_uncles_count_by_hash(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(RpcH256,)>(params)
-			.and_then(|(hash,)|
-				take_weak!(self.client).block(BlockID::Hash(hash.into()))
-					.map_or(Ok(Value::Null), |bytes| Ok(to_value(&RpcU256::from(BlockView::new(&bytes).uncles_count())))))
+	fn block_uncles_count_by_hash(&self, hash: &H256) -> Result<Option<usize>, Error> {
+		Ok(take_weak!(self.client)
+			.block(BlockID::Hash(hash.clone()))
+			.map(|bytes| BlockView::new(&bytes).uncles_count()))
 	}
 
-	fn block_uncles_count_by_number(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(BlockNumber,)>(params)
-			.and_then(|(block_number,)| match block_number {
-				BlockNumber::Pending => Ok(to_value(&RpcU256::from(0))),
-				_ => take_weak!(self.client).block(block_number.into())
-						.map_or(Ok(Value::Null), |bytes| Ok(to_value(&RpcU256::from(BlockView::new(&bytes).uncles_count()))))
-			})
+	fn block_uncles_count_by_number(&self, number: BlockNumber) -> Result<Option<usize>, Error> {
+		match number {
+			BlockNumber::Pending => Ok(Some(0)),
+			number => Ok(take_weak!(self.client).block(number.into())
+				.map(|bytes| BlockView::new(&bytes).uncles_count()))
+		}
 	}
 
-	fn code_at(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params_default_second(params)
-			.and_then(|(address, block_number,)| {
-				let address: Address = RpcH160::into(address);
-				match block_number {
-					BlockNumber::Pending => Ok(to_value(&take_weak!(self.miner).code(&*take_weak!(self.client), &address).map_or_else(Bytes::default, Bytes::new))),
-					_ => match take_weak!(self.client).code(&address, block_number.into()) {
-						Some(code) => Ok(to_value(&code.map_or_else(Bytes::default, Bytes::new))),
-						None => Err(errors::state_pruned()),
-					},
-				}
-			})
+	fn code_at(&self, address: &Address, at: BlockNumber) -> Result<Vec<u8>, Error> {
+		match at {
+			BlockNumber::Pending => Ok(take_weak!(self.miner).code(&*take_weak!(self.client), address).unwrap_or_else(Vec::new)),
+			number => match take_weak!(self.client).code(address, number.into()) {
+				Some(code) => Ok(code.unwrap_or_else(Vec::new)),
+				None => Err(errors::state_pruned()),
+			}
+		}
 	}
 
-	fn block_by_hash(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(RpcH256, bool)>(params)
-			.and_then(|(hash, include_txs)| self.block(BlockID::Hash(hash.into()), include_txs))
+	fn block_by_hash(&self, hash: &H256, include_txs: bool) -> Result<Option<Block>, Error> {
+		self.block(BlockID::Hash(hash.clone()), include_txs)
 	}
 
-	fn block_by_number(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(BlockNumber, bool)>(params)
-			.and_then(|(number, include_txs)| self.block(number.into(), include_txs))
+	fn block_by_number(&self, number: BlockNumber, include_txs: bool) -> Result<Option<Block>, Error> {
+		self.block(number.into(), include_txs)
 	}
 
-	fn transaction_by_hash(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(RpcH256,)>(params)
-			.and_then(|(hash,)| {
-				let miner = take_weak!(self.miner);
-				let hash: H256 = hash.into();
-				match miner.transaction(&hash) {
-					Some(pending_tx) => Ok(to_value(&Transaction::from(pending_tx))),
-					None => self.transaction(TransactionID::Hash(hash))
-				}
-			})
+	fn transaction_by_hash(&self, hash: &H256) -> Result<Option<Transaction>, Error> {
+		let miner = take_weak!(self.miner);
+		match miner.transaction(&hash) {
+			Some(pending_tx) => Ok(Some(pending_tx.into())),
+			None => self.transaction(TransactionID::Hash(hash.clone()))
+		}
 	}
 
-	fn transaction_by_block_hash_and_index(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(RpcH256, Index)>(params)
-			.and_then(|(hash, index)| self.transaction(TransactionID::Location(BlockID::Hash(hash.into()), index.value())))
+	fn transaction_by_block_hash_and_index(&self, hash: &H256, index: usize) -> Result<Option<Transaction>, Error> {
+		self.transaction(TransactionID::Location(BlockID::Hash(hash.clone()), index))
 	}
 
-	fn transaction_by_block_number_and_index(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(BlockNumber, Index)>(params)
-			.and_then(|(number, index)| self.transaction(TransactionID::Location(number.into(), index.value())))
+	fn transaction_by_block_number_and_index(&self, number: BlockNumber, index: usize) -> Result<Option<Transaction>, Error> {
+		self.transaction(TransactionID::Location(number.into(), index))
 	}
 
-	fn transaction_receipt(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(RpcH256,)>(params)
-			.and_then(|(hash,)| {
-				let miner = take_weak!(self.miner);
-				let hash: H256 = hash.into();
-				match (miner.pending_receipt(&hash), self.options.allow_pending_receipt_query) {
-					(Some(receipt), true) => Ok(to_value(&Receipt::from(receipt))),
-					_ => {
-						let client = take_weak!(self.client);
-						let receipt = client.transaction_receipt(TransactionID::Hash(hash));
-						Ok(to_value(&receipt.map(Receipt::from)))
-					}
-				}
-			})
+	fn transaction_receipt(&self, hash: &H256) -> Result<Option<Receipt>, Error> {
+		let miner = take_weak!(self.miner);
+
+		match (miner.pending_receipt(hash), self.options.allow_pending_receipt_query) {
+			(Some(receipt), true) => Ok(Some(receipt.into())),
+			_ => {
+				let client = take_weak!(self.client);
+				let receipt = client.transaction_receipt(TransactionID::Hash(hash.clone()));
+				Ok(receipt.map(Into::into))
+			}
+		}
 	}
 
-	fn uncle_by_block_hash_and_index(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(RpcH256, Index)>(params)
-			.and_then(|(hash, index)| self.uncle(UncleID { block: BlockID::Hash(hash.into()), position: index.value() }))
+	fn uncle_by_block_hash_and_index(&self, hash: &H256, index: usize) -> Result<Option<Block>, Error> {
+		self.uncle(UncleID { block: BlockID::Hash(hash.clone()), position: index })
 	}
 
-	fn uncle_by_block_number_and_index(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(BlockNumber, Index)>(params)
-			.and_then(|(number, index)| self.uncle(UncleID { block: number.into(), position: index.value() }))
+	fn uncle_by_block_number_and_index(&self, number: BlockNumber, index: usize) -> Result<Option<Block>, Error> {
+		self.uncle(UncleID { block: number.into(), position: index })
 	}
 
-	fn compilers(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		try!(expect_no_params(params));
-
+	fn compilers(&self) -> Result<Vec<String>, Error> {
 		let mut compilers = vec![];
 		if Command::new(SOLC).output().is_ok() {
 			compilers.push("solidity".to_owned())
 		}
-		Ok(to_value(&compilers))
+
+		Ok(compilers)
 	}
 
-	fn logs(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(Filter,)>(params)
-			.and_then(|(filter,)| {
-				let include_pending = filter.to_block == Some(BlockNumber::Pending);
-				let filter: EthcoreFilter = filter.into();
-				let mut logs = take_weak!(self.client).logs(filter.clone())
-					.into_iter()
-					.map(From::from)
-					.collect::<Vec<Log>>();
+	fn logs(&self, filter: Filter) -> Result<Vec<Log>, Error> {
+		let include_pending = filter.to_block == Some(BlockNumber::Pending);
+		let filter: EthcoreFilter = filter.into();
+		let mut logs = take_weak!(self.client).logs(filter.clone())
+			.into_iter()
+			.map(From::from)
+			.collect::<Vec<Log>>();
 
-				if include_pending {
-					let pending = pending_logs(&*take_weak!(self.miner), &filter);
-					logs.extend(pending);
-				}
+		if include_pending {
+			let pending = pending_logs(&*take_weak!(self.miner), &filter);
+			logs.extend(pending);
+		}
 
-				Ok(to_value(&logs))
-			})
+		Ok(logs)
 	}
 
-	fn work(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		let (no_new_work_timeout,) = from_params::<(u64,)>(params).unwrap_or((0,));
-
+	fn work(&self, no_new_work_timeout: Option<u64>)
+		-> Result<(H256, H256, H256, Option<u64>), Error> {
 		let client = take_weak!(self.client);
+		let no_new_work_timeout = no_new_work_timeout.unwrap_or(0);
+
 		// check if we're still syncing and return empty strings in that case
 		{
 			//TODO: check if initial sync is complete here
@@ -545,120 +450,86 @@ impl<C, S: ?Sized, M, EM> Eth for EthClient<C, S, M, EM> where
 		miner.map_sealing_work(&*client, |b| {
 			let pow_hash = b.hash();
 			let target = Ethash::difficulty_to_boundary(b.block().header().difficulty());
-			let seed_hash = self.seed_compute.lock().get_seedhash(b.block().header().number());
+			let number = b.block().header().number();
+			let seed_hash = H256(self.seed_compute.lock().get_seedhash(number));
 
 			if no_new_work_timeout > 0 && b.block().header().timestamp() + no_new_work_timeout < get_time().sec as u64 {
 				Err(errors::no_new_work())
 			} else if self.options.send_block_number_in_get_work {
-				let block_number = RpcU256::from(b.block().header().number());
-				Ok(to_value(&(RpcH256::from(pow_hash), RpcH256::from(seed_hash), RpcH256::from(target), block_number)))
+				Ok((pow_hash, seed_hash, target, Some(number)))
 			} else {
-				Ok(to_value(&(RpcH256::from(pow_hash), RpcH256::from(seed_hash), RpcH256::from(target))))
+				Ok((pow_hash, seed_hash, target, None))
 			}
 		}).unwrap_or(Err(Error::internal_error()))	// no work found.
 	}
 
-	fn submit_work(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(RpcH64, RpcH256, RpcH256)>(params).and_then(|(nonce, pow_hash, mix_hash)| {
-			let nonce: H64 = nonce.into();
-			let pow_hash: H256 = pow_hash.into();
-			let mix_hash: H256 = mix_hash.into();
-			trace!(target: "miner", "submit_work: Decoded: nonce={}, pow_hash={}, mix_hash={}", nonce, pow_hash, mix_hash);
-			let miner = take_weak!(self.miner);
-			let client = take_weak!(self.client);
-			let seal = vec![rlp::encode(&mix_hash).to_vec(), rlp::encode(&nonce).to_vec()];
-			let r = miner.submit_seal(&*client, pow_hash, seal);
-			Ok(to_value(&r.is_ok()))
-		})
+	fn submit_work(&self, nonce: H64, pow_hash: H256, mix_hash: H256) -> Result<bool, Error> {
+		let (client, miner) = (take_weak!(self.client), take_weak!(self.miner));
+		let seal = vec![rlp::encode(&mix_hash).to_vec(), rlp::encode(&nonce).to_vec()];
+		Ok(miner.submit_seal(&*client, pow_hash, seal).is_ok())
 	}
 
-	fn submit_hashrate(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(RpcU256, RpcH256)>(params).and_then(|(rate, id)| {
-			self.external_miner.submit_hashrate(rate.into(), id.into());
-			Ok(to_value(&true))
-		})
+	fn submit_hashrate(&self, rate: U256, id: H256) -> Result<bool, Error> {
+		self.external_miner.submit_hashrate(rate, id);
+		Ok(true)
 	}
 
-	fn send_raw_transaction(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(Bytes, )>(params)
-			.and_then(|(raw_transaction, )| {
-				let raw_transaction = raw_transaction.to_vec();
-				match UntrustedRlp::new(&raw_transaction).as_val() {
-					Ok(signed_transaction) => dispatch_transaction(&*take_weak!(self.client), &*take_weak!(self.miner), signed_transaction),
-					Err(_) => Ok(to_value(&RpcH256::from(H256::from(0)))),
+	fn send_raw_transaction(&self, transaction: SignedTransaction) -> Result<H256, Error> {
+		dispatch_transaction(&*take_weak!(self.client), &*take_weak!(self.miner), transaction)
+	}
+
+	fn call(&self, request: CallRequest, at: BlockNumber) -> Result<Vec<u8>, Error> {
+		let signed = try!(self.sign_call(request.into()));
+		let r = match at {
+			BlockNumber::Pending => take_weak!(self.miner).call(&*take_weak!(self.client), &signed, Default::default()),
+			number => take_weak!(self.client).call(&signed, number.into(), Default::default()),
+		};
+
+		Ok(r.map(|e| e.output).unwrap_or(Vec::new()))
+	}
+
+	fn estimate_gas(&self, request: CallRequest, at: BlockNumber) -> Result<U256, Error> {
+		let signed = try!(self.sign_call(request.into()));
+		let r = match at {
+			BlockNumber::Pending => take_weak!(self.miner).call(&*take_weak!(self.client), &signed, Default::default()),
+			number => take_weak!(self.client).call(&signed, number.into(), Default::default()),
+		};
+
+		Ok(r.map(|res| res.gas_used + res.refunded).unwrap_or(0.into()))
+	}
+
+	fn compile_lll(&self, _code: String) -> Result<Vec<u8>, Error> {
+		rpc_unimplemented!()
+	}
+
+	fn compile_serpent(&self, _code: String) -> Result<Vec<u8>, Error> {
+		rpc_unimplemented!()
+	}
+
+	fn compile_solidity(&self, code: String) -> Result<Vec<u8>, Error> {
+		let maybe_child = Command::new(SOLC)
+			.arg("--bin")
+			.arg("--optimize")
+			.stdin(Stdio::piped())
+			.stdout(Stdio::piped())
+			.stderr(Stdio::null())
+			.spawn();
+
+		maybe_child
+			.map_err(errors::compilation)
+			.and_then(|mut child| {
+				try!(child.stdin.as_mut()
+					.expect("we called child.stdin(Stdio::piped()) before spawn; qed")
+					.write_all(code.as_bytes())
+					.map_err(errors::compilation));
+				let output = try!(child.wait_with_output().map_err(errors::compilation));
+
+				let s = String::from_utf8_lossy(&output.stdout);
+				if let Some(hex) = s.lines().skip_while(|ref l| !l.contains("Binary")).skip(1).next() {
+					Ok(hex.from_hex().unwrap_or(vec![]))
+				} else {
+					Err(errors::compilation("Unexpected output."))
 				}
-		})
-	}
-
-	fn call(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params_default_second(params)
-			.and_then(|(request, block_number,)| {
-				let request = CallRequest::into(request);
-				let signed = try!(self.sign_call(request));
-				let r = match block_number {
-					BlockNumber::Pending => take_weak!(self.miner).call(&*take_weak!(self.client), &signed, Default::default()),
-					block_number => take_weak!(self.client).call(&signed, block_number.into(), Default::default()),
-				};
-				Ok(to_value(&r.map(|e| Bytes(e.output)).unwrap_or(Bytes::new(vec![]))))
-			})
-	}
-
-	fn estimate_gas(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params_default_second(params)
-			.and_then(|(request, block_number,)| {
-				let request = CallRequest::into(request);
-				let signed = try!(self.sign_call(request));
-				let r = match block_number {
-					BlockNumber::Pending => take_weak!(self.miner).call(&*take_weak!(self.client), &signed, Default::default()),
-					block => take_weak!(self.client).call(&signed, block.into(), Default::default()),
-				};
-				Ok(to_value(&RpcU256::from(r.map(|res| res.gas_used + res.refunded).unwrap_or(From::from(0)))))
-			})
-	}
-
-	fn compile_lll(&self, _: Params) -> Result<Value, Error> {
-		try!(self.active());
-		rpc_unimplemented!()
-	}
-
-	fn compile_serpent(&self, _: Params) -> Result<Value, Error> {
-		try!(self.active());
-		rpc_unimplemented!()
-	}
-
-	fn compile_solidity(&self, params: Params) -> Result<Value, Error> {
-		try!(self.active());
-		from_params::<(String, )>(params)
-			.and_then(|(code, )| {
-				let maybe_child = Command::new(SOLC)
-					.arg("--bin")
-					.arg("--optimize")
-					.stdin(Stdio::piped())
-					.stdout(Stdio::piped())
-					.stderr(Stdio::null())
-					.spawn();
-
-				maybe_child
-					.map_err(errors::compilation)
-					.and_then(|mut child| {
-						try!(child.stdin.as_mut()
-							.expect("we called child.stdin(Stdio::piped()) before spawn; qed")
-							.write_all(code.as_bytes())
-							.map_err(errors::compilation));
-						let output = try!(child.wait_with_output().map_err(errors::compilation));
-
-						let s = String::from_utf8_lossy(&output.stdout);
-						if let Some(hex) = s.lines().skip_while(|ref l| !l.contains("Binary")).skip(1).next() {
-							Ok(to_value(&Bytes::new(hex.from_hex().unwrap_or(vec![]))))
-						} else {
-							Err(errors::compilation("Unexpected output."))
-						}
-					})
 			})
 	}
 }

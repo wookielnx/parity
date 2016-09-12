@@ -34,7 +34,7 @@ use jsonrpc_core::IoHandler;
 use ethjson::blockchain::BlockChain;
 
 use v1::types::U256 as NU256;
-use v1::traits::eth::{Eth, EthSigning};
+use v1::traits::eth::{EthRpc, EthSigning};
 use v1::impls::{EthClient, EthSigningUnsafeClient};
 use v1::tests::helpers::{TestSyncProvider, Config};
 
