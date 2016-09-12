@@ -23,7 +23,7 @@ use util::{Address, U256, H256, H64};
 use rlp::{UntrustedRlp, View};
 
 use v1::types::{H160 as RpcH160, H256 as RpcH256, H64 as RpcH64, U256 as RpcU256};
-use v1::types::{Block, BlockNumber, Bytes, CallRequest, Filter, Index, Log, Receipt, SyncStatus, Transaction};
+use v1::types::{Block, BlockNumber, Bytes, CallRequest, Filter, FilterChanges, Index, Log, Receipt, SyncStatus, Transaction};
 use v1::helpers::params::{expect_no_params, from_params_default_second, from_params_default_third};
 
 /// Eth rpc implementation.
@@ -139,6 +139,30 @@ pub trait Eth: Sized + Send + Sync + 'static {
 
 	/// Submit a mining hashrate. `true` if successful, `false` otherwise.
 	fn submit_hashrate(&self, rate: U256, id: H256) -> Result<bool, Error>;
+}
+
+/// Eth filters rpc api (polling).
+pub trait EthFilter: Sized + Send + Sync + 'static {
+	/// Called before each request.
+	fn active(&self) -> Result<(), Error> { Ok(()) }
+
+	/// Returns id of new filter.
+	fn new_filter(&self, filter: Filter) -> Result<usize, Error>;
+
+	/// Returns id of new block filter.
+	fn new_block_filter(&self) -> Result<usize, Error>;
+
+	/// Returns id of new block filter.
+	fn new_pending_transaction_filter(&self) -> Result<usize, Error>;
+
+	/// Returns filter changes since last poll.
+	fn filter_changes(&self, id: usize) -> Result<FilterChanges, Error>;
+
+	/// Returns all logs matching given filter (in a range 'from' - 'to').
+	fn filter_logs(&self, id: usize) -> Result<Vec<Log>, Error>;
+
+	/// Uninstalls filter.
+	fn uninstall_filter(&self, id: usize) -> Result<bool, Error>;
 }
 
 /// Eth rpc interface.
@@ -286,6 +310,78 @@ pub trait EthRpc: Sized + Send + Sync + 'static {
 		delegate.add_method("eth_getWork", EthRpc::work);
 		delegate.add_method("eth_submitWork", EthRpc::submit_work);
 		delegate.add_method("eth_submitHashrate", EthRpc::submit_hashrate);
+		delegate
+	}
+}
+
+/// Eth filters rpc api (polling).
+// TODO: do filters api properly
+pub trait EthFilterRpc: Sized + Send + Sync + 'static {
+	/// Returns id of new filter.
+	fn new_filter(&self, _: Params) -> Result<Value, Error>;
+
+	/// Returns id of new block filter.
+	fn new_block_filter(&self, _: Params) -> Result<Value, Error>;
+
+	/// Returns id of new block filter.
+	fn new_pending_transaction_filter(&self, _: Params) -> Result<Value, Error>;
+
+	/// Returns filter changes since last poll.
+	fn filter_changes(&self, _: Params) -> Result<Value, Error>;
+
+	/// Returns all logs matching given filter (in a range 'from' - 'to').
+	fn filter_logs(&self, _: Params) -> Result<Value, Error>;
+
+	/// Uninstalls filter.
+	fn uninstall_filter(&self, _: Params) -> Result<Value, Error>;
+
+	/// Should be used to convert object to io delegate.
+	fn to_delegate(self) -> IoDelegate<Self> {
+		let mut delegate = IoDelegate::new(Arc::new(self));
+		delegate.add_method("eth_newFilter", EthFilterRpc::new_filter);
+		delegate.add_method("eth_newBlockFilter", EthFilterRpc::new_block_filter);
+		delegate.add_method("eth_newPendingTransactionFilter", EthFilterRpc::new_pending_transaction_filter);
+		delegate.add_method("eth_getFilterChanges", EthFilterRpc::filter_changes);
+		delegate.add_method("eth_getFilterLogs", EthFilterRpc::filter_logs);
+		delegate.add_method("eth_uninstallFilter", EthFilterRpc::uninstall_filter);
+		delegate
+	}
+}
+
+/// Signing methods implementation relying on unlocked accounts.
+pub trait EthSigning: Sized + Send + Sync + 'static {
+	/// Signs the data with given address signature.
+	fn sign(&self, _: Params, _: Ready);
+
+	/// Posts sign request asynchronously.
+	/// Will return a confirmation ID for later use with check_transaction.
+	fn post_sign(&self, _: Params) -> Result<Value, Error>;
+
+	/// Sends transaction; will block for 20s to try to return the
+	/// transaction hash.
+	/// If it cannot yet be signed, it will return a transaction ID for
+	/// later use with check_transaction.
+	fn send_transaction(&self, _: Params, _: Ready);
+
+	/// Posts transaction asynchronously.
+	/// Will return a transaction ID for later use with check_transaction.
+	fn post_transaction(&self, _: Params) -> Result<Value, Error>;
+
+	/// Checks the progress of a previously posted request (transaction/sign).
+	/// Should be given a valid send_transaction ID.
+	/// Returns the transaction hash, the zero hash (not yet available),
+	/// or the signature,
+	/// or an error.
+	fn check_request(&self, _: Params) -> Result<Value, Error>;
+
+	/// Should be used to convert object to io delegate.
+	fn to_delegate(self) -> IoDelegate<Self> {
+		let mut delegate = IoDelegate::new(Arc::new(self));
+		delegate.add_async_method("eth_sign", EthSigning::sign);
+		delegate.add_async_method("eth_sendTransaction", EthSigning::send_transaction);
+		delegate.add_method("eth_postSign", EthSigning::post_sign);
+		delegate.add_method("eth_postTransaction", EthSigning::post_transaction);
+		delegate.add_method("eth_checkRequest", EthSigning::check_request);
 		delegate
 	}
 }
@@ -622,74 +718,53 @@ impl<T: Eth> EthRpc for T {
 	}
 }
 
-/// Eth filters rpc api (polling).
-// TODO: do filters api properly
-pub trait EthFilter: Sized + Send + Sync + 'static {
-	/// Returns id of new filter.
-	fn new_filter(&self, _: Params) -> Result<Value, Error>;
-
-	/// Returns id of new block filter.
-	fn new_block_filter(&self, _: Params) -> Result<Value, Error>;
-
-	/// Returns id of new block filter.
-	fn new_pending_transaction_filter(&self, _: Params) -> Result<Value, Error>;
-
-	/// Returns filter changes since last poll.
-	fn filter_changes(&self, _: Params) -> Result<Value, Error>;
-
-	/// Returns all logs matching given filter (in a range 'from' - 'to').
-	fn filter_logs(&self, _: Params) -> Result<Value, Error>;
-
-	/// Uninstalls filter.
-	fn uninstall_filter(&self, _: Params) -> Result<Value, Error>;
-
-	/// Should be used to convert object to io delegate.
-	fn to_delegate(self) -> IoDelegate<Self> {
-		let mut delegate = IoDelegate::new(Arc::new(self));
-		delegate.add_method("eth_newFilter", EthFilter::new_filter);
-		delegate.add_method("eth_newBlockFilter", EthFilter::new_block_filter);
-		delegate.add_method("eth_newPendingTransactionFilter", EthFilter::new_pending_transaction_filter);
-		delegate.add_method("eth_getFilterChanges", EthFilter::filter_changes);
-		delegate.add_method("eth_getFilterLogs", EthFilter::filter_logs);
-		delegate.add_method("eth_uninstallFilter", EthFilter::uninstall_filter);
-		delegate
+impl<T: EthFilter> EthFilterRpc for T {
+	fn new_filter(&self, params: Params) -> Result<Value, Error> {
+		try!(self.active());
+		from_params::<(Filter,)>(params).and_then(|(filter,)| {
+			EthFilter::new_filter(self, filter).map(RpcU256::from).map(to_value)
+		})
 	}
-}
 
-/// Signing methods implementation relying on unlocked accounts.
-pub trait EthSigning: Sized + Send + Sync + 'static {
-	/// Signs the data with given address signature.
-	fn sign(&self, _: Params, _: Ready);
+	fn new_block_filter(&self, params: Params) -> Result<Value, Error> {
+		try!(self.active());
+		try!(expect_no_params(params));
 
-	/// Posts sign request asynchronously.
-	/// Will return a confirmation ID for later use with check_transaction.
-	fn post_sign(&self, _: Params) -> Result<Value, Error>;
+		EthFilter::new_block_filter(self).map(RpcU256::from).map(to_value)
+	}
 
-	/// Sends transaction; will block for 20s to try to return the
-	/// transaction hash.
-	/// If it cannot yet be signed, it will return a transaction ID for
-	/// later use with check_transaction.
-	fn send_transaction(&self, _: Params, _: Ready);
+	fn new_pending_transaction_filter(&self, params: Params) -> Result<Value, Error> {
+		try!(self.active());
+		try!(expect_no_params(params));
 
-	/// Posts transaction asynchronously.
-	/// Will return a transaction ID for later use with check_transaction.
-	fn post_transaction(&self, _: Params) -> Result<Value, Error>;
+		EthFilter::new_pending_transaction_filter(self).map(RpcU256::from).map(to_value)
+	}
 
-	/// Checks the progress of a previously posted request (transaction/sign).
-	/// Should be given a valid send_transaction ID.
-	/// Returns the transaction hash, the zero hash (not yet available),
-	/// or the signature,
-	/// or an error.
-	fn check_request(&self, _: Params) -> Result<Value, Error>;
+	fn filter_changes(&self, params: Params) -> Result<Value, Error> {
+		try!(self.active());
 
-	/// Should be used to convert object to io delegate.
-	fn to_delegate(self) -> IoDelegate<Self> {
-		let mut delegate = IoDelegate::new(Arc::new(self));
-		delegate.add_async_method("eth_sign", EthSigning::sign);
-		delegate.add_async_method("eth_sendTransaction", EthSigning::send_transaction);
-		delegate.add_method("eth_postSign", EthSigning::post_sign);
-		delegate.add_method("eth_postTransaction", EthSigning::post_transaction);
-		delegate.add_method("eth_checkRequest", EthSigning::check_request);
-		delegate
+		from_params::<(Index,)>(params).and_then(|(index,)| {
+			EthFilter::filter_changes(self, index.value()).map(|changes| match changes {
+				FilterChanges::Blocks(hashes) | FilterChanges::Transactions(hashes) => to_value(hashes),
+				FilterChanges::Logs(logs) => to_value(logs),
+				FilterChanges::Invalid => to_value(&[] as &[Value]),
+			})
+		})
+	}
+
+	fn filter_logs(&self, params: Params) -> Result<Value, Error> {
+		try!(self.active());
+
+		from_params::<(Index,)>(params).and_then(|(index,)| {
+			EthFilter::filter_logs(self, index.value()).map(to_value)
+		})
+	}
+
+	fn uninstall_filter(&self, params: Params) -> Result<Value, Error> {
+		try!(self.active());
+
+		from_params::<(Index,)>(params).and_then(|(index,)| {
+			EthFilter::uninstall_filter(self, index.value()).map(to_value)
+		})
 	}
 }

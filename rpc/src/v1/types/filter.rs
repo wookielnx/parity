@@ -19,7 +19,7 @@ use serde_json::value;
 use jsonrpc_core::Value;
 use ethcore::filter::Filter as EthFilter;
 use ethcore::client::BlockID;
-use v1::types::{BlockNumber, H160, H256};
+use v1::types::{BlockNumber, H160, H256, Log};
 
 /// Variadic value
 #[derive(Debug, PartialEq, Clone)]
@@ -88,6 +88,19 @@ impl Into<EthFilter> for Filter {
 			}
 		}
 	}
+}
+
+/// Changes from a given filter.
+#[derive(Debug, PartialEq, Clone)]
+pub enum FilterChanges {
+	/// Blocks since last poll.
+	Blocks(Vec<H256>),
+	/// Transactions since last poll.
+	Transactions(Vec<H256>),
+	/// Matching logs since last poll.
+	Logs(Vec<Log>),
+	/// Invalid request
+	Invalid,
 }
 
 #[cfg(test)]
