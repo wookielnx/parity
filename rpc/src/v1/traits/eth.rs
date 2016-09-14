@@ -24,7 +24,7 @@ use rlp::{UntrustedRlp, View};
 
 use v1::types::{H160 as RpcH160, H256 as RpcH256, H64 as RpcH64, U256 as RpcU256};
 use v1::types::{Block, BlockNumber, Bytes, CallRequest, Filter, FilterChanges, Index, Log, Receipt, SyncStatus, Transaction};
-use v1::helpers::params::{expect_no_params, from_params_default_second, from_params_default_third};
+use v1::helpers::params::{expect_no_params, from_params_default_second, from_params_default_third, params_len};
 
 /// Eth rpc implementation.
 pub trait Eth: Sized + Send + Sync + 'static {
@@ -126,7 +126,7 @@ pub trait Eth: Sized + Send + Sync + 'static {
 	fn compile_serpent(&self, code: String) -> Result<Vec<u8>, Error>;
 
 	/// Returns logs matching given filter object.
-	fn logs(&self, filter: Filter) -> Result<Vec<Log>, Error>;
+	fn logs(&self, filter: Filter, limit: Option<usize>) -> Result<Vec<Log>, Error>;
 
 	/// Returns the hash of the current block, the seedHash, and the boundary condition to be met.
 	/// Takes an optional work timeout and returns an optional block number.
@@ -679,8 +679,13 @@ impl<T: Eth> EthRpc for T {
 	fn logs(&self, params: Params) -> Result<Value, Error> {
 		try!(self.active());
 
-		from_params::<(Filter,)>(params).and_then(|(filter,)| {
-			Eth::logs(self, filter).map(to_value)
+		let params = match params_len(&params) {
+			1 => from_params::<(Filter,)>(params).map(|(filter,)| (filter, None)),
+			_ => from_params::<(Filter, usize)>(params).map(|(filter, val)| (filter, Some(val))),
+		};
+
+		params.and_then(|(filter, limit)| {
+			Eth::logs(self, filter, limit).map(to_value)
 		})
 	}
 

@@ -399,10 +399,10 @@ impl<C, S: ?Sized, M, EM> Eth for EthClient<C, S, M, EM> where
 		Ok(compilers)
 	}
 
-	fn logs(&self, filter: Filter) -> Result<Vec<Log>, Error> {
+	fn logs(&self, filter: Filter, limit: Option<usize>) -> Result<Vec<Log>, Error> {
 		let include_pending = filter.to_block == Some(BlockNumber::Pending);
 		let filter: EthcoreFilter = filter.into();
-		let mut logs = take_weak!(self.client).logs(filter.clone())
+		let mut logs = take_weak!(self.client).logs(filter.clone(), limit)
 			.into_iter()
 			.map(From::from)
 			.collect::<Vec<Log>>();
@@ -410,6 +410,14 @@ impl<C, S: ?Sized, M, EM> Eth for EthClient<C, S, M, EM> where
 		if include_pending {
 			let pending = pending_logs(&*take_weak!(self.miner), &filter);
 			logs.extend(pending);
+		}
+
+		let len = logs.len();
+		match limit {
+			Some(limit) if len >= limit => {
+				logs = logs.split_off(len - limit);
+			}
+			_ => {}
 		}
 
 		Ok(logs)
