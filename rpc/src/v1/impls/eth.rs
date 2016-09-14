@@ -286,30 +286,24 @@ impl<C, S: ?Sized, M, EM> Eth for EthClient<C, S, M, EM> where
 	fn balance(&self, address: &Address, at: BlockNumber) -> Result<U256, Error> {
 		match at {
 			BlockNumber::Pending => Ok(take_weak!(self.miner).balance(&*take_weak!(self.client), &address)),
-			id => match take_weak!(self.client).balance(&address, id.into()) {
-				Some(balance) => Ok(balance),
-				None => Err(errors::state_pruned()),
-			}
+			id => take_weak!(self.client).balance(&address, id.into())
+				.ok_or_else(errors::state_pruned),
 		}
 	}
 
 	fn storage_at(&self, address: &Address, key: &H256, at: BlockNumber) -> Result<H256, Error> {
 		match at {
 			BlockNumber::Pending => Ok(take_weak!(self.miner).storage_at(&*take_weak!(self.client), address, key)),
-			id => match take_weak!(self.client).storage_at(address, key, id.into()) {
-				Some(s) => Ok(s),
-				None => Err(errors::state_pruned()),
-			}
+			id => take_weak!(self.client).storage_at(address, key, id.into())
+				.ok_or_else(errors::state_pruned),
 		}
 	}
 
 	fn transaction_count(&self, address: &Address, at: BlockNumber) -> Result<U256, Error> {
 		match at {
 			BlockNumber::Pending => Ok(take_weak!(self.miner).nonce(&*take_weak!(self.client), &address)),
-			id => match take_weak!(self.client).nonce(&address, id.into()) {
-				Some(nonce) => Ok(nonce),
-				None => Err(errors::state_pruned()),
-			}
+			id => take_weak!(self.client).nonce(&address, id.into())
+				.ok_or_else(errors::state_pruned),
 		}
 	}
 
