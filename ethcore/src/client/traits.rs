@@ -38,11 +38,8 @@ use ipc::IpcConfig;
 use types::blockchain_info::BlockChainInfo;
 use types::block_status::BlockStatus;
 
-#[derive(Ipc)]
-#[ipc(client_ident="RemoteClient")]
 /// Blockchain database client. Owns and manages a blockchain and a block queue.
 pub trait BlockChainClient : Sync + Send {
-
 	/// Should be called by any external-facing interface when actively using the client.
 	/// To minimise chatter, there's no need to call more than once every 30s.
 	fn keep_alive(&self) {}
@@ -118,30 +115,8 @@ pub trait BlockChainClient : Sync + Send {
 	/// Get uncle with given id.
 	fn uncle(&self, id: UncleID) -> Option<Bytes>;
 
-	/// Get transaction receipt with given hash.
-	fn transaction_receipt(&self, id: TransactionID) -> Option<LocalizedReceipt>;
-
-	/// Get a tree route between `from` and `to`.
-	/// See `BlockChain::tree_route`.
-	fn tree_route(&self, from: &H256, to: &H256) -> Option<TreeRoute>;
-
 	/// Get all possible uncle hashes for a block.
 	fn find_uncles(&self, hash: &H256) -> Option<Vec<H256>>;
-
-	/// Get latest state node
-	fn state_data(&self, hash: &H256) -> Option<Bytes>;
-
-	/// Get raw block receipts data by block header hash.
-	fn block_receipts(&self, hash: &H256) -> Option<Bytes>;
-
-	/// Import a block into the blockchain.
-	fn import_block(&self, bytes: Bytes) -> Result<H256, BlockImportError>;
-
-	/// Get block queue information.
-	fn queue_info(&self) -> BlockQueueInfo;
-
-	/// Clear block queue and abort all import activity.
-	fn clear_queue(&self);
 
 	/// Get blockchain information.
 	fn chain_info(&self) -> BlockChainInfo;
@@ -163,18 +138,6 @@ pub trait BlockChainClient : Sync + Send {
 
 	/// Replays a given transaction for inspection.
 	fn replay(&self, t: TransactionID, analytics: CallAnalytics) -> Result<Executed, CallError>;
-
-	/// Returns traces matching given filter.
-	fn filter_traces(&self, filter: TraceFilter) -> Option<Vec<LocalizedTrace>>;
-
-	/// Returns trace with given id.
-	fn trace(&self, trace: TraceId) -> Option<LocalizedTrace>;
-
-	/// Returns traces created by transaction.
-	fn transaction_traces(&self, trace: TransactionID) -> Option<Vec<LocalizedTrace>>;
-
-	/// Returns traces created by transaction from block.
-	fn block_traces(&self, trace: BlockID) -> Option<Vec<LocalizedTrace>>;
 
 	/// Get last hashes starting from best block.
 	fn last_hashes(&self) -> LastHashes;
@@ -211,18 +174,3 @@ pub trait BlockChainClient : Sync + Send {
 		}
 	}
 }
-
-/// Extended client interface used for mining
-pub trait MiningBlockChainClient : BlockChainClient {
-	/// Returns OpenBlock prepared for closing.
-	fn prepare_open_block(&self, author: Address, gas_range_target: (U256, U256), extra_data: Bytes)
-		-> OpenBlock;
-
-	/// Returns EvmFactory.
-	fn vm_factory(&self) -> &EvmFactory;
-
-	/// Import sealed block. Skips all verifications.
-	fn import_sealed_block(&self, block: SealedBlock) -> ImportResult;
-}
-
-impl IpcConfig for BlockChainClient { }
