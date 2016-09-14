@@ -27,3 +27,40 @@ pub trait Derive : Proto {
 
 impl IpcConfig for Derive {}
 
+#[test]
+fn can_call_derive() {
+	use devtools::TestSocket;
+
+	let mut socket = TestSocket::new();
+	socket.read_buffer = vec![1];
+	let client = DeriveClient::init(socket);
+
+	client.derive(99, 77);
+
+	assert_eq!(vec![
+		0, 17,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		16, 0, 0, 0, 0, 0, 0, 0,
+		99, 0, 0, 0, 0, 0, 0, 0,
+		77, 0, 0, 0, 0, 0, 0, 0],
+		client.socket().write().unwrap().write_buffer.clone());
+}
+
+#[test]
+fn can_call_proto() {
+	use devtools::TestSocket;
+
+	let mut socket = TestSocket::new();
+	socket.read_buffer = vec![1];
+	let client = DeriveClient::init(socket);
+
+	client.proto(99);
+
+	assert_eq!(vec![
+		0, 16,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		8, 0, 0, 0, 0, 0, 0, 0,
+		99, 0, 0, 0, 0, 0, 0, 0],
+		client.socket().write().unwrap().write_buffer.clone());
+}
+
