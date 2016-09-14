@@ -14,20 +14,5 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
-#![allow(dead_code)]
-
-extern crate ethcore_ipc as ipc;
-extern crate ethcore_devtools as devtools;
-extern crate semver;
-extern crate nanomsg;
-extern crate ethcore_ipc_nano as nanoipc;
-extern crate ethcore_util as util;
-#[macro_use] extern crate log;
-
-pub mod service;
-mod examples;
-mod over_nano;
-mod nested;
-mod binary;
-mod with_attrs;
-mod inheritance;
+#![allow(dead_code, unused_assignments, unused_variables)] // codegen issues
+include!(concat!(env!("OUT_DIR"), "/inheritance.rs.in"));

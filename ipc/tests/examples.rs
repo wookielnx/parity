@@ -20,6 +20,7 @@ mod tests {
 	use super::super::service::*;
 	use super::super::binary::*;
 	use super::super::nested::{DBClient, DBWriter};
+	use super::super::inheritance::{DeriveClient, Derive};
 	use ipc::*;
 	use devtools::*;
 	use semver::Version;
@@ -169,5 +170,22 @@ mod tests {
 			8, 0, 0, 0, 0, 0, 0, 0,
 			99, 0, 0, 0, 0, 0, 0, 0],
 			service_client.socket().write().unwrap().write_buffer.clone());
+	}
+
+	#[test]
+	fn can_call_derive_trait() {
+		let mut socket = TestSocket::new();
+		socket.read_buffer = vec![1];
+		let client = DeriveClient::init(socket);
+
+		client.derive(99, 77);
+
+		assert_eq!(vec![
+			0, 16,
+			0, 0, 0, 0, 0, 0, 0, 0,
+			16, 0, 0, 0, 0, 0, 0, 0,
+			99, 0, 0, 0, 0, 0, 0, 0,
+			77, 0, 0, 0, 0, 0, 0, 0],
+			client.socket().write().unwrap().write_buffer.clone());
 	}
 }

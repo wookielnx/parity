@@ -20,5 +20,6 @@ pub fn main() {
 	codegen::derive_ipc("nested.rs.in").unwrap();
 	codegen::derive_ipc("service.rs.in").unwrap();
 	codegen::derive_ipc("with_attrs.rs.in").unwrap();
+	codegen::derive_ipc("inheritance.rs.in").unwrap();
 	codegen::derive_binary("binary.rs.in").unwrap();
 }
