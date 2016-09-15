@@ -30,4 +30,4 @@ mod over_nano;
 mod nested;
 mod binary;
 mod with_attrs;
-mod inheritance;
+//mod inheritance;

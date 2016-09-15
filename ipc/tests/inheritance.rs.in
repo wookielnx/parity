@@ -20,7 +20,7 @@ pub trait Proto {
 	fn proto(&self, p1: u64) -> bool;
 }
 
-#[derive(Ipc)]
+#[ipc]
 pub trait Derive : Proto {
 	fn derive(&self, p1: u64, p2: u64) -> bool;
 }

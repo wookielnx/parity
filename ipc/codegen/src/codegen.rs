@@ -39,6 +39,11 @@ pub struct Error;
 
 const RESERVED_MESSAGE_IDS: u16 = 16;
 
+pub struct ExpansionContext<'a> {
+	cx: &'a mut ExtCtxt,
+	builder: &'a aster::AstBuilder,
+}
+
 pub fn expand_ipc_implementation(
 	cx: &mut ExtCtxt,
 	span: Span,

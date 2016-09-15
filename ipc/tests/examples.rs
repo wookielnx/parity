@@ -20,7 +20,6 @@ mod tests {
 	use super::super::service::*;
 	use super::super::binary::*;
 	use super::super::nested::{DBClient, DBWriter};
-	use super::super::inheritance::{DeriveClient, Derive};
 	use ipc::*;
 	use devtools::*;
 	use semver::Version;
