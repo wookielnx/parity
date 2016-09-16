@@ -57,8 +57,8 @@ pub fn new_mainnet_like() -> Spec { load(include_bytes!("../../res/ethereum/fron
 /// Create a new Morden chain spec.
 pub fn new_morden() -> Spec { load(include_bytes!("../../res/ethereum/morden.json")) }
 
-/// Create a new workshop chain spec. This has a premine for account with password "rustfestworkshop"
-/// b94ebd7bf3e2197993b9b5f182db673c376893ff
+/// Create a new workshop chain spec. This has a premine for account created with
+/// personal_newAccountFromPhrase("Test Account For RustFest Workshop", "ethcore")
 pub fn new_workshop() -> Spec { load(include_bytes!("../../res/ethereum/workshop.json")) }
 
 #[cfg(test)]
