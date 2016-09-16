@@ -25,10 +25,12 @@ use block::ExecutedBlock;
 use common::Bytes;
 use account_provider::AccountProvider;
 
+use util::RwLock;
+
 /// An engine which does not provide any consensus mechanism, just seals blocks internally.
 pub struct InstantSeal {
 	params: CommonParams,
-	builtins: BTreeMap<Address, Builtin>,
+	builtins: RwLock<BTreeMap<Address, Builtin>>,
 }
 
 impl InstantSeal {
@@ -36,7 +38,7 @@ impl InstantSeal {
 	pub fn new(params: CommonParams, builtins: BTreeMap<Address, Builtin>) -> Self {
 		InstantSeal {
 			params: params,
-			builtins: builtins,
+			builtins: RwLock::new(builtins),
 		}
 	}
 }
@@ -50,8 +52,8 @@ impl Engine for InstantSeal {
 		&self.params
 	}
 
-	fn builtins(&self) -> &BTreeMap<Address, Builtin> {
-		&self.builtins
+	fn builtins(&self) -> BTreeMap<Address, Builtin> {
+		self.builtins.read().clone()
 	}
 
 	fn schedule(&self, _env_info: &EnvInfo) -> Schedule {
@@ -62,6 +64,10 @@ impl Engine for InstantSeal {
 
 	fn generate_seal(&self, _block: &ExecutedBlock, _accounts: Option<&AccountProvider>) -> Option<Vec<Bytes>> {
 		Some(Vec::new())
+	}
+
+	fn add_builtin(&self, address: Address, builtin: Builtin) {
+		self.builtins.write().insert(address, builtin);
 	}
 }
 

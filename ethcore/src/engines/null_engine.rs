@@ -47,8 +47,8 @@ impl Engine for NullEngine {
 		&self.params
 	}
 
-	fn builtins(&self) -> &BTreeMap<Address, Builtin> {
-		&self.builtins
+	fn builtins(&self) -> BTreeMap<Address, Builtin> {
+		self.builtins.clone()
 	}
 
 	fn schedule(&self, _env_info: &EnvInfo) -> Schedule {

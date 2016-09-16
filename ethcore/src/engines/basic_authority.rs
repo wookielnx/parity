@@ -72,7 +72,7 @@ impl Engine for BasicAuthority {
 	fn seal_fields(&self) -> usize { 1 }
 
 	fn params(&self) -> &CommonParams { &self.params }
-	fn builtins(&self) -> &BTreeMap<Address, Builtin> { &self.builtins }
+	fn builtins(&self) -> BTreeMap<Address, Builtin> { self.builtins.clone() }
 
 	/// Additional engine-specific information for the user/developer concerning `header`.
 	fn extra_info(&self, _header: &Header) -> HashMap<String, String> { hash_map!["signature".to_owned() => "TODO".to_owned()] }

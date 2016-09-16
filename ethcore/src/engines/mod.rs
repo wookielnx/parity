@@ -45,7 +45,7 @@ pub trait Engine : Sync + Send {
 	fn extra_info(&self, _header: &Header) -> HashMap<String, String> { HashMap::new() }
 
 	/// Additional information.
-	fn additional_params(&self) -> HashMap<String, String> { HashMap::new() } 
+	fn additional_params(&self) -> HashMap<String, String> { HashMap::new() }
 
 	/// Get the general parameters of the chain.
 	fn params(&self) -> &CommonParams;
@@ -55,7 +55,7 @@ pub trait Engine : Sync + Send {
 
 	/// Builtin-contracts we would like to see in the chain.
 	/// (In principle these are just hints for the engine since that has the last word on them.)
-	fn builtins(&self) -> &BTreeMap<Address, Builtin>;
+	fn builtins(&self) -> BTreeMap<Address, Builtin>;
 
 	/// Some intrinsic operation parameters; by default they take their value from the `spec()`'s `engine_params`.
 	fn maximum_extra_data_size(&self) -> usize { self.params().maximum_extra_data_size }
@@ -128,5 +128,7 @@ pub trait Engine : Sync + Send {
 	/// Panics if `is_builtin(a)` is not true.
 	fn execute_builtin(&self, a: &Address, input: &[u8], output: &mut [u8]) { self.builtins().get(a).unwrap().execute(input, output); }
 
+	/// Add a builtin. only works for instantseal :)
+	fn add_builtin(&self, _address: Address, _builtin: Builtin) { }
 	// TODO: sealing stuff - though might want to leave this for later.
 }

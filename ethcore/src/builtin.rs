@@ -17,9 +17,12 @@
 use crypto::sha2::Sha256 as Sha256Digest;
 use crypto::ripemd160::Ripemd160 as Ripemd160Digest;
 use crypto::digest::Digest;
-use util::*;
 use ethkey::{Signature, recover as ec_recover};
 use ethjson;
+
+use std::cmp::min;
+use std::sync::Arc;
+use util::{U256, H256, FixedHash, Hashable};
 
 /// Native implementation of a built-in contract.
 pub trait Impl: Send + Sync {
@@ -34,9 +37,11 @@ pub trait Pricer: Send + Sync {
 }
 
 /// A linear pricing model. This computes a price using a base cost and a cost per-word.
-struct Linear {
-	base: usize,
-	word: usize,
+pub struct Linear {
+	/// Base cost
+	pub base: usize,
+	/// Cost per-word
+	pub word: usize,
 }
 
 impl Pricer for Linear {
@@ -46,9 +51,12 @@ impl Pricer for Linear {
 }
 
 /// Pricing scheme and execution definition for a built-in contract.
+#[derive(Clone)]
 pub struct Builtin {
-	pricer: Box<Pricer>,
-	native: Box<Impl>,
+	/// The pricing scheme for this built-in.
+	pub pricer: Arc<Pricer>,
+	/// The implementation of the built-in.
+	pub native: Arc<Impl>,
 }
 
 impl Builtin {
@@ -63,7 +71,7 @@ impl From<ethjson::spec::Builtin> for Builtin {
 	fn from(b: ethjson::spec::Builtin) -> Self {
 		let pricer = match b.pricing {
 			ethjson::spec::Pricing::Linear(linear) => {
-				Box::new(Linear {
+				Arc::new(Linear {
 					base: linear.base,
 					word: linear.word,
 				})
@@ -78,12 +86,12 @@ impl From<ethjson::spec::Builtin> for Builtin {
 }
 
 // Ethereum builtin creator.
-fn ethereum_builtin(name: &str) -> Box<Impl> {
+fn ethereum_builtin(name: &str) -> Arc<Impl> {
 	match name {
-		"identity" => Box::new(Identity) as Box<Impl>,
-		"ecrecover" => Box::new(EcRecover) as Box<Impl>,
-		"sha256" => Box::new(Sha256) as Box<Impl>,
-		"ripemd160" => Box::new(Ripemd160) as Box<Impl>,
+		"identity" => Arc::new(Identity) as Arc<Impl>,
+		"ecrecover" => Arc::new(EcRecover) as Arc<Impl>,
+		"sha256" => Arc::new(Sha256) as Arc<Impl>,
+		"ripemd160" => Arc::new(Ripemd160) as Arc<Impl>,
 		_ => panic!("invalid builtin name: {}", name),
 	}
 }
@@ -195,6 +203,7 @@ mod tests {
 	use super::{Builtin, Linear, ethereum_builtin, Pricer};
 	use ethjson;
 	use util::U256;
+	use std::sync::Arc;
 
 	#[test]
 	fn identity() {
@@ -323,9 +332,9 @@ mod tests {
 
 	#[test]
 	fn from_named_linear() {
-		let pricer = Box::new(Linear { base: 10, word: 20 });
+		let pricer = Arc::new(Linear { base: 10, word: 20 });
 		let b = Builtin {
-			pricer: pricer as Box<Pricer>,
+			pricer: pricer as Arc<Pricer>,
 			native: ethereum_builtin("identity"),
 		};
 
