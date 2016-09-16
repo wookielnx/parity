@@ -30,18 +30,19 @@ use syntax::ast::{
 	TraitItemKind,
 };
 
-use syntax::ast;
+use syntax::{ast, fold};
 use syntax::codemap::Span;
 use syntax::ext::base::{Annotatable, ExtCtxt};
 use syntax::ptr::P;
+use std::collections::HashMap;
 
 pub struct Error;
 
 const RESERVED_MESSAGE_IDS: u16 = 16;
 
-pub struct ExpansionContext<'a> {
-	cx: &'a mut ExtCtxt,
-	builder: &'a aster::AstBuilder,
+#[derive(Default)]
+pub struct CrateContext {
+	includes: HashMap<TraitRef, InterfaceMap>,
 }
 
 pub fn expand_ipc_implementation(
@@ -790,6 +791,12 @@ fn ty_ident_map(original_ty: &P<Ty>) -> IdentMap {
 	ident_map
 }
 
+pub fn pregenerate_context(mut crate_context: CrateContext) -> CrateContext {
+	CrateContext {
+		includes: crate_context.includes,
+	}
+}
+
 /// implements `IpcInterface` for the given class `C`
 fn implement_interface(
 	cx: &ExtCtxt,
@@ -897,4 +904,76 @@ fn implement_interface(
 		impl_trait: impl_trait.clone(),
 		endpoint: interface_endpoint,
 	})
+}
+
+pub fn fold_crate(krate: ast::Crate) -> ast::Crate {
+	use syntax::ext::expand;
+	use syntax::ext::base::Annotatable;
+	use syntax::feature_gate;
+	use syntax::util::small_vector::SmallVector;
+	use syntax::parse;
+	use std::cell::RefCell;
+
+	struct IpcFolder {
+		sess: parse::ParseSess,
+		features: feature_gate::Features,
+		items: RefCell<Vec<P<Item>>>,
+	}
+
+	impl fold::Folder for IpcFolder {
+    	fn fold_item(&mut self, item: P<Item>) -> SmallVector<P<Item>> {
+			let ipc_attr = item.attrs.iter().any(|attr| match attr.node.value.node {
+					ast::MetaItemKind::List(ref n, _) if n == &"ipc" => { return true; }
+					_ => false,
+				});
+
+			if ipc_attr {
+				let mut ecfg = expand::ExpansionConfig::default("".to_owned());
+				ecfg.features = Some(&self.features);
+
+				let cfg = Vec::new();
+				let mut gated_cfgs = Vec::new();
+				let mut ecx = ExtCtxt::new(&self.sess, cfg, ecfg, &mut gated_cfgs);
+
+				let meta_val = item.attrs[0].node.value.clone();
+
+				let mut items = self.items.borrow_mut();
+				items.push(item.clone());
+				let expand = expand_ipc_implementation(
+					&mut ecx,
+					item.span,
+					&meta_val,
+					&Annotatable::Item(item.clone()),
+					&mut |item| {
+						match item {
+							Annotatable::Item(item) => { items.push(item); }
+							_ => {}
+						};
+					});
+
+				SmallVector::many(self.items.borrow().clone())
+			}
+			else {
+				fold::noop_fold_item(item, self)
+			}
+		}
+
+		fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
+			fold::noop_fold_mac(mac, self)
+		}
+	}
+
+	let sess = parse::ParseSess::new();
+
+	let features = feature_gate::get_features(
+		&sess.span_diagnostic,
+		&krate);
+
+	let mut folder = IpcFolder {
+		sess: parse::ParseSess::new(),
+		features: features,
+		items: RefCell::new(Vec::new()),
+	};
+
+	fold::Folder::fold_crate(&mut folder, krate)
 }

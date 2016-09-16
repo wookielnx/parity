@@ -59,6 +59,8 @@ pub fn expand(src: &std::path::Path, dst: &std::path::Path) {
 pub fn register(reg: &mut syntex::Registry) {
 	use syntax::{ast, fold};
 
+	let mut crate_context = codegen::CrateContext::default();
+
 	#[cfg(feature = "with-syntex")]
 	fn strip_attributes(krate: ast::Crate) -> ast::Crate {
 		struct StripAttributeFolder;
@@ -83,7 +85,9 @@ pub fn register(reg: &mut syntex::Registry) {
 	reg.add_attr("feature(custom_derive)");
 	reg.add_attr("feature(custom_attribute)");
 
-	reg.add_decorator("ipc", codegen::expand_ipc_implementation);
+	reg.add_pre_expansion_pass(codegen::fold_crate);
+
+	//reg.add_decorator("ipc", codegen::expand_ipc_implementation);
 	reg.add_decorator("derive_Binary", serialization::expand_serialization_implementation);
 
 	reg.add_post_expansion_pass(strip_attributes);
