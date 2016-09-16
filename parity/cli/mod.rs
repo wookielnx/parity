@@ -75,7 +75,7 @@ usage! {
 		flag_mode: String = "active", or |c: &Config| otry!(c.parity).mode.clone(),
 		flag_mode_timeout: u64 = 300u64, or |c: &Config| otry!(c.parity).mode_timeout.clone(),
 		flag_mode_alarm: u64 = 3600u64, or |c: &Config| otry!(c.parity).mode_alarm.clone(),
-		flag_chain: String = "homestead", or |c: &Config| otry!(c.parity).chain.clone(),
+		flag_chain: String = "workshop", or |c: &Config| otry!(c.parity).chain.clone(),
 		flag_db_path: String = "$HOME/.parity", or |c: &Config| otry!(c.parity).db_path.clone(),
 		flag_keys_path: String = "$HOME/.parity/keys", or |c: &Config| otry!(c.parity).keys_path.clone(),
 		flag_identity: String = "", or |c: &Config| otry!(c.parity).identity.clone(),

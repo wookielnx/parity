@@ -59,7 +59,7 @@ impl Engine for TestEngine {
 		self.engine.params()
 	}
 
-	fn builtins(&self) -> &BTreeMap<Address, Builtin> {
+	fn builtins(&self) -> BTreeMap<Address, Builtin> {
 		self.engine.builtins()
 	}
 

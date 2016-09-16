@@ -92,7 +92,7 @@ fn ethereum_builtin(name: &str) -> Arc<Impl> {
 		"ecrecover" => Arc::new(EcRecover) as Arc<Impl>,
 		"sha256" => Arc::new(Sha256) as Arc<Impl>,
 		"ripemd160" => Arc::new(Ripemd160) as Arc<Impl>,
-		_ => panic!("invalid builtin name: {}", name),
+		_ => panic!("invalid ethereum builtin name: {}", name),
 	}
 }
 

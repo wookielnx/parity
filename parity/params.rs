@@ -30,6 +30,7 @@ pub enum SpecType {
 	Testnet,
 	Olympic,
 	Classic,
+	Workshop,
 	Custom(String),
 }
 
@@ -48,6 +49,7 @@ impl FromStr for SpecType {
 			"frontier-dogmatic" | "homestead-dogmatic" | "classic" => SpecType::Classic,
 			"morden" | "testnet" => SpecType::Testnet,
 			"olympic" => SpecType::Olympic,
+			"workshop" => SpecType::Workshop,
 			other => SpecType::Custom(other.into()),
 		};
 		Ok(spec)
@@ -61,6 +63,7 @@ impl SpecType {
 			SpecType::Testnet => Ok(ethereum::new_morden()),
 			SpecType::Olympic => Ok(ethereum::new_olympic()),
 			SpecType::Classic => Ok(ethereum::new_classic()),
+			SpecType::Workshop => Ok(ethereum::new_workshop()),
 			SpecType::Custom(ref filename) => {
 				let file = try!(fs::File::open(filename).map_err(|_| "Could not load specification file."));
 				Spec::load(file)
