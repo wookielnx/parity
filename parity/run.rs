@@ -99,8 +99,14 @@ pub fn execute(cmd: RunCmd) -> Result<(), String> {
 	// create dirs used by parity
 	try!(cmd.dirs.create_dirs());
 
-	// load spec
+	// load spec and register workshop builtins.
 	let spec = try!(cmd.spec.spec());
+
+	for (address, builtin) in ::workshop_builtins::produce_builtins() {
+		info!("Registering builtin to address: {:?}", address);
+		spec.engine.add_builtin(address, builtin);
+	}
+
 	let fork_name = spec.fork_name.clone();
 
 	// load genesis hash

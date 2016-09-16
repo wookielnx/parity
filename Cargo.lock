@@ -40,6 +40,7 @@ dependencies = [
  "time 0.1.35 (registry+https://github.com/rust-lang/crates.io-index)",
  "toml 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "workshop-builtins 1.4.0",
 ]
 
 [[package]]
@@ -1795,6 +1796,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "winapi-build"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "workshop-builtins"
+version = "1.4.0"
+dependencies = [
+ "ethcore 1.4.0",
+ "ethcore-util 1.4.0",
+]
 
 [[package]]
 name = "ws"

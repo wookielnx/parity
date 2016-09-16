@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
+//! Traits for and definitions of built-in contracts.
+
 use crypto::sha2::Sha256 as Sha256Digest;
 use crypto::ripemd160::Ripemd160 as Ripemd160Digest;
 use crypto::digest::Digest;

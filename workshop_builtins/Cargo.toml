@@ -1,0 +1,9 @@
+[package]
+name = "workshop-builtins"
+description = "RustFest workshop builtins"
+author = "The RustFest workshop attendees"
+version = "1.4.0"
+
+[dependencies]
+ethcore = { path = "../ethcore" }
+ethcore-util = { path = "../util" }

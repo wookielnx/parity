@@ -134,6 +134,7 @@ pub mod miner;
 pub mod snapshot;
 pub mod action_params;
 pub mod db;
+pub mod builtin;
 #[macro_use] pub mod evm;
 
 mod cache_manager;
@@ -144,7 +145,6 @@ mod env_info;
 mod pod_account;
 mod state;
 mod account_db;
-mod builtin;
 mod executive;
 mod externalities;
 mod verification;

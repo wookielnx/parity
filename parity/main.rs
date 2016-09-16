@@ -53,6 +53,8 @@ extern crate regex;
 extern crate isatty;
 extern crate toml;
 
+extern crate workshop_builtins;
+
 #[macro_use]
 extern crate ethcore_util as util;
 #[macro_use]
