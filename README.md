@@ -63,20 +63,13 @@ Once you have rustup, install parity or download and build from source
 
 ----
 
-## Quick install
-
-```bash
-cargo install --git https://github.com/ethcore/parity.git parity
-```
-
-----
-
 ## Build from source
 
 ```bash
 # download Parity code
 $ git clone https://github.com/ethcore/parity
 $ cd parity
+$ git checkout rustfest-workshop
 
 # build in release mode
 $ cargo build --release
@@ -93,12 +86,14 @@ $ ./target/release/parity
 
 and Parity will begin syncing the Ethereum blockchain.
 
-### Using systemd service file
-To start Parity as a regular user using systemd init:
 
-1. Copy ```parity/scripts/parity.service``` to your
-systemd user directory (usually ```~/.config/systemd/user```).
-2. To pass any argument to Parity, write a ```~/.parity/parity.conf``` file this way:
-```ARGS="ARG1 ARG2 ARG3"```.
+## RustFest workshop
 
-	Example: ```ARGS="ui --geth --identity MyMachine"```.
+Once Parity is started, open another terminal and issue the following command
+to create a special account which has been specially given a large balance.
+
+```bash
+$ curl -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","method":"personal_newAccountFromPhrase","params":["Test Account For RustFest Workshop", "ethcore"],"id":1}' localhost:8545
+```
+
+This account's address is `ca807a90fd64deed760fb98bf0869b475c469348` and its password is "ethcore".
