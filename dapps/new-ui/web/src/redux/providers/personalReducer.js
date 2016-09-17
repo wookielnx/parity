@@ -25,7 +25,7 @@ export default handleActions({
     const accounts = {};
     const contacts = {};
 
-    Object.keys(accountsInfo).forEach((address) => {
+    Object.keys(accountsInfo || {}).forEach((address) => {
       const account = accountsInfo[address] || {};
       const { name, meta, uuid } = account;
 
