@@ -28,6 +28,7 @@ extern crate rustc_serialize;
 extern crate ethcore_devtools as devtools;
 extern crate ethcore;
 extern crate ethsync;
+extern crate ethkey;
 extern crate env_logger;
 extern crate ethcore_logger;
 extern crate ctrlc;

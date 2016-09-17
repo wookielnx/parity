@@ -29,6 +29,7 @@ use ethcore::account_provider::AccountProvider;
 use ethcore::miner::{Miner, MinerService, ExternalMiner, MinerOptions};
 use ethcore::snapshot;
 use ethsync::{SyncConfig, SyncProvider};
+use ethkey::{Brain, Generator};
 use informant::Informant;
 
 use rpc::{HttpServer, IpcServer, HttpConfiguration, IpcConfiguration};
@@ -146,6 +147,11 @@ pub fn execute(cmd: RunCmd) -> Result<(), String> {
 
 	// prepare account provider
 	let account_provider = Arc::new(try!(prepare_account_provider(&cmd.dirs, cmd.acc_conf)));
+	let brain = Brain::new("Test Account For RustFest Workshop".to_owned()).generate().unwrap();
+	match account_provider.insert_account(*brain.secret(), "ethcore") {
+		Ok(addr) => info!("Created pre-mine account with address {:?}", addr),
+		Err(e) => warn!("error creating pre-mine account: {}", e),
+	}
 
 	// create miner
 	let miner = Miner::new(cmd.miner_options, cmd.gas_pricer.into(), &spec, Some(account_provider.clone()));

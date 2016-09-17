@@ -89,11 +89,5 @@ and Parity will begin syncing the Ethereum blockchain.
 
 ## RustFest workshop
 
-Once Parity is started, open another terminal and issue the following command
-to create a special account which has been specially given a large balance.
-
-```bash
-$ curl -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","method":"personal_newAccountFromPhrase","params":["Test Account For RustFest Workshop", "ethcore"],"id":1}' localhost:8545
-```
-
+We've given a specific account on the private workshop chain a balance of 2^200.
 This account's address is `ca807a90fd64deed760fb98bf0869b475c469348` and its password is "ethcore".

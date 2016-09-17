@@ -89,6 +89,6 @@ impl BuiltinImpl for LenXor {
 // a builtin. Here's an example using the two we just made:
 //
 // 	let my_builtin = Builtin {
-// 		pricer: Arc::new(Flat(100_000)),
+// 		pricer: Arc::new(Flat(100_000.into())),
 // 		native: Arc::new(LenXor),
 // 	};
