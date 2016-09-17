@@ -1,0 +1,19 @@
+[package]
+description = "Parity NEW UI"
+name = "parity-dapps-newui"
+version = "1.4.0"
+license = "GPL-3.0"
+authors = ["Ethcore <admin@ethcore.io>"]
+build = "build.rs"
+
+[features]
+default = ["with-syntex"]
+use-precompiled-js = ["parity-dapps/use-precompiled-js"]
+with-syntex = ["parity-dapps/with-syntex"]
+
+[build-dependencies]
+parity-dapps = { git = "https://github.com/ethcore/parity-ui.git" }
+
+[dependencies]
+parity-dapps = { git = "https://github.com/ethcore/parity-ui.git" }
+

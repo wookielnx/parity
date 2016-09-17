@@ -51,7 +51,7 @@ Account Options:
                            Signer UIs, even when --unlock is in use.
                            (default: ${flag_force_signer})
   --no-signer              Disable Trusted Signer WebSocket endpoint used by
-                           Signer UIs. (default: ${flag_no_signer})
+                           Signer UIs. (default: {flag_no_signer})
   --signer-port PORT       Specify the port of Trusted Signer server
                            (default: {flag_signer_port}).
   --signer-interface IP    Specify the hostname portion of the Trusted Signer

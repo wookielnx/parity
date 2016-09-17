@@ -25,8 +25,8 @@ pub mod urlhint;
 pub mod fetcher;
 pub mod manifest;
 
-extern crate parity_dapps_status;
 extern crate parity_dapps_home;
+extern crate parity_dapps_newui;
 
 pub const DAPPS_DOMAIN : &'static str = ".parity";
 pub const RPC_PATH : &'static str =  "rpc";
@@ -55,26 +55,9 @@ pub fn all_endpoints(dapps_path: String) -> Endpoints {
 	// because we use Cross-Origin LocalStorage.
 	// TODO [ToDr] Account naming should be moved to parity.
 	pages.insert("home".into(), Box::new(
-		PageEndpoint::new_safe_to_embed(parity_dapps_home::App::default())
+		PageEndpoint::new_safe_to_embed(parity_dapps_newui::App::default())
 	));
 	pages.insert("proxy".into(), ProxyPac::boxed());
-	insert::<parity_dapps_status::App>(&mut pages, "parity");
-	insert::<parity_dapps_status::App>(&mut pages, "status");
-
-	// Optional dapps
-	wallet_page(&mut pages);
 
 	pages
-}
-
-#[cfg(feature = "parity-dapps-wallet")]
-fn wallet_page(pages: &mut Endpoints) {
-	extern crate parity_dapps_wallet;
-	insert::<parity_dapps_wallet::App>(pages, "wallet");
-}
-#[cfg(not(feature = "parity-dapps-wallet"))]
-fn wallet_page(_pages: &mut Endpoints) {}
-
-fn insert<T : WebApp + Default + 'static>(pages: &mut Endpoints, id: &str) {
-	pages.insert(id.to_owned(), Box::new(PageEndpoint::new(T::default())));
 }

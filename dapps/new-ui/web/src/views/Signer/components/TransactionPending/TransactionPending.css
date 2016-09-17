@@ -1,0 +1,112 @@
+/* Copyright 2015, 2016 Ethcore (UK) Ltd.
+/* This file is part of Parity.
+/*
+/* Parity is free software: you can redistribute it and/or modify
+/* it under the terms of the GNU General Public License as published by
+/* the Free Software Foundation, either version 3 of the License, or
+/* (at your option) any later version.
+/*
+/* Parity is distributed in the hope that it will be useful,
+/* but WITHOUT ANY WARRANTY; without even the implied warranty of
+/* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+/* GNU General Public License for more details.
+/*
+/* You should have received a copy of the GNU General Public License
+/* along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+*/
+.container {
+  padding: 25px 0 15px;
+}
+
+.transactionDetails {
+  margin-right: 321px;
+}
+
+.mainContainer {
+  position: relative;
+}
+
+.mainContainer:after {
+  clear: both;
+}
+
+.mainContainer > * {
+  vertical-align: middle;
+  min-height: 120px;
+}
+
+.iconsContainer {
+  display: block;
+  text-align: center;
+  font-size: .8em;
+  opacity: 0.5;
+  padding: 1em 0 0 0;
+}
+
+.iconsContainer > * {
+  margin-right: 3px;
+  display: inline-block;
+}
+
+.iconsContainer:after {
+  clear: both;
+}
+
+.inputs {
+  margin-right: 30px;
+  margin-left: 30px;
+  width: 180px;
+  position: relative;
+  top: -15px; /* due to material ui weird styling */
+}
+
+.hasInfoIcon svg,
+.miningTime svg,
+.gasPrice svg,
+.data svg {
+  width: 16px !important;
+  height: 16px !important;
+  position: relative;
+  bottom: -3px;
+}
+
+/* TODO [ToDr] composes was handling weird errors when linking from other app */
+.miningTime {
+  /* composes: hasInfoIcon; */
+}
+
+.gasPrice {
+  /* composes: hasInfoIcon; */
+}
+
+.data  {
+  /* composes: hasInfoIcon; */
+  cursor: pointer;
+}
+
+.data.noData {
+  cursor: text;
+}
+
+
+.dataTooltip {
+  word-wrap: break-word;
+  max-width: 400px;
+}
+
+.expandedData {
+  display: block;
+  padding: 15px;
+  background: gray;
+  word-wrap: break-word;
+  color: #fff;
+}
+
+.expandedContainer {
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.expandedContainer:empty {
+  padding: 0;
+}

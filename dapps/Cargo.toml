@@ -29,9 +29,8 @@ ethcore-util = { path = "../util" }
 https-fetch = { path = "../util/https-fetch" }
 parity-dapps = { git = "https://github.com/ethcore/parity-ui.git", version = "1.4" }
 # List of apps
-parity-dapps-status = { git = "https://github.com/ethcore/parity-ui.git", version = "1.4" }
 parity-dapps-home = { git = "https://github.com/ethcore/parity-ui.git", version = "1.4" }
-parity-dapps-wallet = { git = "https://github.com/ethcore/parity-ui.git", version = "1.4", optional = true }
+parity-dapps-newui = { path = "./new-ui" }
 mime_guess = { version = "1.6.1" }
 clippy = { version = "0.0.85", optional = true}
 
@@ -40,12 +39,10 @@ serde_codegen = { version = "0.8", optional = true }
 
 [features]
 default = ["serde_codegen", "extra-dapps"]
-extra-dapps = ["parity-dapps-wallet"]
+extra-dapps = []
 nightly = ["serde_macros"]
 dev = ["clippy", "ethcore-rpc/dev", "ethcore-util/dev"]
 
 use-precompiled-js = [
-	"parity-dapps-status/use-precompiled-js",
-	"parity-dapps-home/use-precompiled-js",
-	"parity-dapps-wallet/use-precompiled-js"
+	"parity-dapps-newui/use-precompiled-js",
 ]
