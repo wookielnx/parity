@@ -17,7 +17,6 @@
 use endpoint::{Endpoints, Endpoint};
 use page::PageEndpoint;
 use proxypac::ProxyPac;
-use parity_dapps::WebApp;
 
 mod cache;
 mod fs;

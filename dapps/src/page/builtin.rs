@@ -30,6 +30,7 @@ pub struct PageEndpoint<T : WebApp + 'static> {
 }
 
 impl<T: WebApp + 'static> PageEndpoint<T> {
+	#[cfg(test)]
 	/// Creates new `PageEndpoint` for builtin (compile time) Dapp.
 	pub fn new(app: T) -> Self {
 		let info = app.info();

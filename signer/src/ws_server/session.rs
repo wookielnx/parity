@@ -53,6 +53,8 @@ fn origin_is_allowed(self_origin: &str, header: Option<&[u8]>) -> bool {
 				Some(ref origin) if origin.starts_with("chrome-extension://") => true,
 				Some(ref origin) if origin.starts_with(self_origin) => true,
 				Some(ref origin) if origin.starts_with(&format!("http://{}", self_origin)) => true,
+				Some(ref origin) if origin.starts_with(&format!("http://localhost:8080")) => true,
+				Some(ref origin) if origin.contains(".parity") => true,
 				_ => false
 			}
 		}
