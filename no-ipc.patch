@@ -1,15 +1,76 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index a0b8ac6..d108a7b 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -13,10 +13,8 @@ dependencies = [
+  "ethcore-devtools 1.4.0",
+  "ethcore-io 1.4.0",
+  "ethcore-ipc 1.4.0",
+- "ethcore-ipc-codegen 1.4.0",
+  "ethcore-ipc-hypervisor 1.2.0",
+  "ethcore-ipc-nano 1.4.0",
+- "ethcore-ipc-tests 0.1.0",
+  "ethcore-logger 1.4.0",
+  "ethcore-rpc 1.4.0",
+  "ethcore-signer 1.4.0",
+@@ -277,7 +275,6 @@ dependencies = [
+  "ethcore-devtools 1.4.0",
+  "ethcore-io 1.4.0",
+  "ethcore-ipc 1.4.0",
+- "ethcore-ipc-codegen 1.4.0",
+  "ethcore-ipc-nano 1.4.0",
+  "ethcore-util 1.4.0",
+  "ethjson 0.1.0",
+@@ -380,7 +377,6 @@ name = "ethcore-ipc-hypervisor"
+ version = "1.2.0"
+ dependencies = [
+  "ethcore-ipc 1.4.0",
+- "ethcore-ipc-codegen 1.4.0",
+  "ethcore-ipc-nano 1.4.0",
+  "log 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
+  "nanomsg 0.5.1 (git+https://github.com/ethcore/nanomsg.rs.git)",
+@@ -398,20 +394,6 @@ dependencies = [
+ ]
+ 
+ [[package]]
+-name = "ethcore-ipc-tests"
+-version = "0.1.0"
+-dependencies = [
+- "ethcore-devtools 1.4.0",
+- "ethcore-ipc 1.4.0",
+- "ethcore-ipc-codegen 1.4.0",
+- "ethcore-ipc-nano 1.4.0",
+- "ethcore-util 1.4.0",
+- "log 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
+- "nanomsg 0.5.1 (git+https://github.com/ethcore/nanomsg.rs.git)",
+- "semver 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
+-]
+-
+-[[package]]
+ name = "ethcore-logger"
+ version = "1.4.0"
+ dependencies = [
+@@ -609,7 +591,6 @@ dependencies = [
+  "ethcore 1.4.0",
+  "ethcore-io 1.4.0",
+  "ethcore-ipc 1.4.0",
+- "ethcore-ipc-codegen 1.4.0",
+  "ethcore-ipc-nano 1.4.0",
+  "ethcore-network 1.4.0",
+  "ethcore-util 1.4.0",
 diff --git a/Cargo.toml b/Cargo.toml
-index 021e7f3..4906c2c 100644
+index 021e7f3..5618fdc 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -8,7 +8,6 @@ build = "build.rs"
+@@ -8,8 +8,6 @@ build = "build.rs"
  
  [build-dependencies]
  rustc_version = "0.1"
 -ethcore-ipc-codegen = { path = "ipc/codegen" }
- ethcore-ipc-tests = { path = "ipc/tests" }
+-ethcore-ipc-tests = { path = "ipc/tests" }
  
  [dependencies]
+ log = "0.3"
 diff --git a/db/Cargo.toml b/db/Cargo.toml
 index c7cbba2..e42e7ab 100644
 --- a/db/Cargo.toml
@@ -64,82 +125,543 @@ index fe6a682..fcca139 100644
  
  [dependencies]
  log = "0.3"
+diff --git a/ethcore/build.rs b/ethcore/build.rs
+index b839557..0bce714 100644
+--- a/ethcore/build.rs
++++ b/ethcore/build.rs
+@@ -14,11 +14,6 @@
+ // You should have received a copy of the GNU General Public License
+ // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+ 
+-extern crate ethcore_ipc_codegen;
+ 
+ fn main() {
+-	ethcore_ipc_codegen::derive_binary("src/types/mod.rs.in").unwrap();
+-	ethcore_ipc_codegen::derive_ipc("src/client/traits.rs").unwrap();
+-	ethcore_ipc_codegen::derive_ipc("src/snapshot/snapshot_service_trait.rs").unwrap();
+-	ethcore_ipc_codegen::derive_ipc("src/client/chain_notify.rs").unwrap();
+ }
+diff --git a/ipc/hypervisor/Cargo.toml b/ipc/hypervisor/Cargo.toml
+index a4c462b..9866aa8 100644
+--- a/ipc/hypervisor/Cargo.toml
++++ b/ipc/hypervisor/Cargo.toml
+@@ -15,4 +15,3 @@ semver = "0.2"
+ log = "0.3"
+ 
+ [build-dependencies]
+-ethcore-ipc-codegen = { path = "../codegen" }
+diff --git a/ipc/hypervisor/build.rs b/ipc/hypervisor/build.rs
+index 391ac64..0bce714 100644
+--- a/ipc/hypervisor/build.rs
++++ b/ipc/hypervisor/build.rs
+@@ -14,8 +14,6 @@
+ // You should have received a copy of the GNU General Public License
+ // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+ 
+-extern crate ethcore_ipc_codegen;
+ 
+ fn main() {
+-	ethcore_ipc_codegen::derive_ipc("src/service.rs.in").unwrap();
+ }
+diff --git a/ipc/hypervisor/src/lib.rs b/ipc/hypervisor/src/lib.rs
+index 78b8b04..93a8a83 100644
+--- a/ipc/hypervisor/src/lib.rs
++++ b/ipc/hypervisor/src/lib.rs
+@@ -33,14 +33,13 @@ use service::{HypervisorService, IpcModuleId};
+ use std::process::{Command,Child};
+ use std::collections::HashMap;
+ 
+-pub use service::{HypervisorServiceClient, ControlService, CLIENT_MODULE_ID, SYNC_MODULE_ID};
++pub use service::{ControlService, CLIENT_MODULE_ID, SYNC_MODULE_ID};
+ 
+ pub type BinaryId = &'static str;
+ 
+ pub struct Hypervisor {
+ 	ipc_addr: String,
+ 	service: Arc<HypervisorService>,
+-	ipc_worker: RwLock<nanoipc::Worker<HypervisorService>>,
+ 	processes: RwLock<HashMap<IpcModuleId, Child>>,
+ 	modules: HashMap<IpcModuleId, BootArgs>,
+ 	pub io_path: String,
+@@ -99,16 +98,7 @@ impl Hypervisor {
+ 	/// Starts with the specified address for the ipc listener and
+ 	/// the specified list of modules in form of created service
+ 	pub fn with_url(addr: &str) -> Hypervisor {
+-		let service = HypervisorService::new();
+-		let worker = nanoipc::Worker::new(&service);
+-		Hypervisor{
+-			ipc_addr: addr.to_owned(),
+-			service: service,
+-			ipc_worker: RwLock::new(worker),
+-			processes: RwLock::new(HashMap::new()),
+-			modules: HashMap::new(),
+-			io_path: "/tmp".to_owned(),
+-		}
++		unimplemented!()
+ 	}
+ 
+ 	/// Since one binary can host multiple modules
+@@ -119,12 +109,6 @@ impl Hypervisor {
+ 
+ 	/// Creates IPC listener and starts all binaries
+ 	pub fn start(&self) {
+-		let mut worker = self.ipc_worker.write().unwrap();
+-		worker.add_reqrep(&self.ipc_addr).unwrap_or_else(|e| panic!("Hypervisor ipc worker can not start - critical! ({:?})", e));
+-
+-		for module_id in self.service.module_ids() {
+-			self.start_module(module_id);
+-		}
+ 	}
+ 
+ 	/// Start binary for the specified module
+@@ -180,18 +164,10 @@ impl Hypervisor {
+ 
+ 	/// Waits for every required module to check in
+ 	pub fn wait_for_startup(&self) {
+-		let mut worker = self.ipc_worker.write().unwrap();
+-		while !self.modules_ready() {
+-			worker.poll()
+-		}
+ 	}
+ 
+ 	/// Waits for every required module to check in
+ 	pub fn wait_for_shutdown(&self) {
+-		let mut worker = self.ipc_worker.write().unwrap();
+-		while !self.modules_shutdown() {
+-			worker.poll()
+-		}
+ 	}
+ 
+ 	/// Shutdown the ipc and all managed child processes
+@@ -228,28 +204,4 @@ mod tests {
+ 		let hypervisor = Hypervisor::with_url(url).local_module(test_module_id);
+ 		assert_eq!(false, hypervisor.modules_ready());
+ 	}
+-
+-	#[test]
+-	fn can_wait_for_startup() {
+-		let url = "ipc:///tmp/test-parity-hypervisor-20.ipc";
+-		let test_module_id = 8080u64;
+-
+-		let hypervisor_ready = Arc::new(AtomicBool::new(false));
+-		let hypervisor_ready_local = hypervisor_ready.clone();
+-
+-		::std::thread::spawn(move || {
+-			while !hypervisor_ready.load(Ordering::Relaxed) { }
+-
+-			let client = nanoipc::fast_client::<HypervisorServiceClient<_>>(url).unwrap();
+-			client.handshake().unwrap();
+-			client.module_ready(test_module_id);
+-		});
+-
+-		let hypervisor = Hypervisor::with_url(url).local_module(test_module_id);
+-		hypervisor.start();
+-		hypervisor_ready_local.store(true, Ordering::Relaxed);
+-		hypervisor.wait_for_startup();
+-
+-		assert_eq!(true, hypervisor.modules_ready());
+-	}
+ }
+diff --git a/ipc/hypervisor/src/service.rs b/ipc/hypervisor/src/service.rs
+index ffc83dc..c012bf7 100644
+--- a/ipc/hypervisor/src/service.rs
++++ b/ipc/hypervisor/src/service.rs
+@@ -14,7 +14,105 @@
+ // You should have received a copy of the GNU General Public License
+ // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+ 
+-//! Parity interprocess hypervisor IPC service
+-#![allow(dead_code, unused_assignments, unused_variables)] // codegen issues
++use std::sync::{RwLock,Arc};
++use ipc::IpcConfig;
++use std::collections::HashMap;
++use nanoipc;
+ 
+-include!(concat!(env!("OUT_DIR"), "/service.rs.in"));
++pub type IpcModuleId = u64;
++
++/// Blockhain database module id
++pub const CLIENT_MODULE_ID: IpcModuleId = 2000;
++
++/// Sync module id
++pub const SYNC_MODULE_ID: IpcModuleId = 2100;
++
++/// IPC service that handles module management
++pub struct HypervisorService {
++	modules: RwLock<HashMap<IpcModuleId, ModuleState>>,
++}
++
++#[derive(Default)]
++pub struct ModuleState {
++	started: bool,
++	control_url: String,
++	shutdown: bool,
++}
++
++
++pub trait ControlService {
++	fn shutdown(&self) -> bool;
++}
++
++impl HypervisorService {
++	// return type for making method synchronous
++	fn module_ready(&self, module_id: u64, control_url: String) -> bool {
++		let mut modules = self.modules.write().unwrap();
++		modules.get_mut(&module_id).map(|mut module| {
++			module.started = true;
++			module.control_url = control_url;
++		});
++		trace!(target: "hypervisor", "Module ready: {}", module_id);
++		true
++	}
++
++	// return type for making method synchronous
++	fn module_shutdown(&self, module_id: u64) -> bool {
++		let mut modules = self.modules.write().unwrap();
++		modules.get_mut(&module_id).map(|mut module| {
++			module.shutdown = true;
++		});
++		trace!(target: "hypervisor", "Module shutdown: {}", module_id);
++		true
++	}
++}
++
++impl HypervisorService {
++	/// New service with the default list of modules
++	pub fn new() -> Arc<HypervisorService> {
++		HypervisorService::with_modules(vec![])
++	}
++
++	/// New service with list of modules that will report for being ready
++	pub fn with_modules(module_ids: Vec<IpcModuleId>) -> Arc<HypervisorService> {
++		let mut modules = HashMap::new();
++		for module_id in module_ids {
++			modules.insert(module_id, ModuleState::default());
++		}
++		Arc::new(HypervisorService {
++			modules: RwLock::new(modules),
++		})
++	}
++
++	/// Add the module to the check-list
++	pub fn add_module(&self, module_id: IpcModuleId) {
++		self.modules.write().unwrap().insert(module_id, ModuleState::default());
++	}
++
++	/// Number of modules still being waited for check-in
++	pub fn unchecked_count(&self) -> usize {
++		self.modules.read().unwrap().iter().filter(|&(_, module)| !module.started).count()
++	}
++
++	/// List of all modules within this service
++	pub fn module_ids(&self) -> Vec<IpcModuleId> {
++		self.modules.read().unwrap().iter().map(|(module_id, _)| module_id).cloned().collect()
++	}
++
++	/// Number of modules started and running
++	pub fn running_count(&self) -> usize {
++		self.modules.read().unwrap().iter().filter(|&(_, module)| module.started && !module.shutdown).count()
++	}
++
++	pub fn send_shutdown(&self, module_id: IpcModuleId) {
++		let modules = self.modules.read().unwrap();
++		modules.get(&module_id).map(|module| {
++			trace!(target: "hypervisor", "Sending shutdown to {}({})", module_id, &module.control_url);
++			trace!(target: "hypervisor", "Sent shutdown to {}", module_id);
++		});
++	}
++}
++
++impl ::ipc::IpcConfig for HypervisorService {}
++
++impl ::ipc::IpcConfig for ControlService {}
+diff --git a/ipc/hypervisor/src/service.rs.in b/ipc/hypervisor/src/service.rs.in
+deleted file mode 100644
+index 74d289f..0000000
+--- a/ipc/hypervisor/src/service.rs.in
++++ /dev/null
+@@ -1,122 +0,0 @@
+-// Copyright 2015, 2016 Ethcore (UK) Ltd.
+-// This file is part of Parity.
+-
+-// Parity is free software: you can redistribute it and/or modify
+-// it under the terms of the GNU General Public License as published by
+-// the Free Software Foundation, either version 3 of the License, or
+-// (at your option) any later version.
+-
+-// Parity is distributed in the hope that it will be useful,
+-// but WITHOUT ANY WARRANTY; without even the implied warranty of
+-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-// GNU General Public License for more details.
+-
+-// You should have received a copy of the GNU General Public License
+-// along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+-
+-use std::sync::{RwLock,Arc};
+-use ipc::IpcConfig;
+-use std::collections::HashMap;
+-use nanoipc;
+-
+-pub type IpcModuleId = u64;
+-
+-/// Blockhain database module id
+-pub const CLIENT_MODULE_ID: IpcModuleId = 2000;
+-
+-/// Sync module id
+-pub const SYNC_MODULE_ID: IpcModuleId = 2100;
+-
+-/// IPC service that handles module management
+-pub struct HypervisorService {
+-	modules: RwLock<HashMap<IpcModuleId, ModuleState>>,
+-}
+-
+-#[derive(Default)]
+-pub struct ModuleState {
+-	started: bool,
+-	control_url: String,
+-	shutdown: bool,
+-}
+-
+-
+-#[derive(Ipc)]
+-pub trait ControlService {
+-	fn shutdown(&self) -> bool;
+-}
+-
+-#[derive(Ipc)]
+-impl HypervisorService {
+-	// return type for making method synchronous
+-	fn module_ready(&self, module_id: u64, control_url: String) -> bool {
+-		let mut modules = self.modules.write().unwrap();
+-		modules.get_mut(&module_id).map(|mut module| {
+-			module.started = true;
+-			module.control_url = control_url;
+-		});
+-		trace!(target: "hypervisor", "Module ready: {}", module_id);
+-		true
+-	}
+-
+-	// return type for making method synchronous
+-	fn module_shutdown(&self, module_id: u64) -> bool {
+-		let mut modules = self.modules.write().unwrap();
+-		modules.get_mut(&module_id).map(|mut module| {
+-			module.shutdown = true;
+-		});
+-		trace!(target: "hypervisor", "Module shutdown: {}", module_id);
+-		true
+-	}
+-}
+-
+-impl HypervisorService {
+-	/// New service with the default list of modules
+-	pub fn new() -> Arc<HypervisorService> {
+-		HypervisorService::with_modules(vec![])
+-	}
+-
+-	/// New service with list of modules that will report for being ready
+-	pub fn with_modules(module_ids: Vec<IpcModuleId>) -> Arc<HypervisorService> {
+-		let mut modules = HashMap::new();
+-		for module_id in module_ids {
+-			modules.insert(module_id, ModuleState::default());
+-		}
+-		Arc::new(HypervisorService {
+-			modules: RwLock::new(modules),
+-		})
+-	}
+-
+-	/// Add the module to the check-list
+-	pub fn add_module(&self, module_id: IpcModuleId) {
+-		self.modules.write().unwrap().insert(module_id, ModuleState::default());
+-	}
+-
+-	/// Number of modules still being waited for check-in
+-	pub fn unchecked_count(&self) -> usize {
+-		self.modules.read().unwrap().iter().filter(|&(_, module)| !module.started).count()
+-	}
+-
+-	/// List of all modules within this service
+-	pub fn module_ids(&self) -> Vec<IpcModuleId> {
+-		self.modules.read().unwrap().iter().map(|(module_id, _)| module_id).cloned().collect()
+-	}
+-
+-	/// Number of modules started and running
+-	pub fn running_count(&self) -> usize {
+-		self.modules.read().unwrap().iter().filter(|&(_, module)| module.started && !module.shutdown).count()
+-	}
+-
+-	pub fn send_shutdown(&self, module_id: IpcModuleId) {
+-		let modules = self.modules.read().unwrap();
+-		modules.get(&module_id).map(|module| {
+-			trace!(target: "hypervisor", "Sending shutdown to {}({})", module_id, &module.control_url);
+-			let client = nanoipc::fast_client::<ControlServiceClient<_>>(&module.control_url).unwrap();
+-			client.shutdown();
+-			trace!(target: "hypervisor", "Sent shutdown to {}", module_id);
+-		});
+-	}
+-}
+-
+-impl ::ipc::IpcConfig for HypervisorService {}
+-
+-impl ::ipc::IpcConfig for ControlService {}
 diff --git a/no-ipc.patch b/no-ipc.patch
-index 8c24424..e69de29 100644
+index df16257..8598498 100644
 --- a/no-ipc.patch
 +++ b/no-ipc.patch
-@@ -1,71 +0,0 @@
+@@ -1,154 +0,0 @@
 -diff --git a/Cargo.toml b/Cargo.toml
--index 021e7f3..24b031d 100644
+-index 021e7f3..4906c2c 100644
 ---- a/Cargo.toml
 -+++ b/Cargo.toml
--@@ -58,7 +58,7 @@ version = "0.9"
-- default-features = false
+-@@ -8,7 +8,6 @@ build = "build.rs"
 - 
-- [features]
---default = ["ui", "use-precompiled-js", "ipc"]
--+default = ["ui", "use-precompiled-js"]
-- ui = ["dapps", "ethcore-signer/ui"]
-- use-precompiled-js = ["ethcore-dapps/use-precompiled-js", "ethcore-signer/use-precompiled-js"]
-- dapps = ["ethcore-dapps"]
--diff --git a/ethcore/build.rs b/ethcore/build.rs
--index b839557..3de8973 100644
----- a/ethcore/build.rs
--+++ b/ethcore/build.rs
--@@ -14,11 +14,5 @@
-- // You should have received a copy of the GNU General Public License
-- // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+- [build-dependencies]
+- rustc_version = "0.1"
+--ethcore-ipc-codegen = { path = "ipc/codegen" }
+- ethcore-ipc-tests = { path = "ipc/tests" }
 - 
---extern crate ethcore_ipc_codegen;
---
-- fn main() {
---	ethcore_ipc_codegen::derive_binary("src/types/mod.rs.in").unwrap();
---	ethcore_ipc_codegen::derive_ipc("src/client/traits.rs").unwrap();
---	ethcore_ipc_codegen::derive_ipc("src/snapshot/snapshot_service_trait.rs").unwrap();
---	ethcore_ipc_codegen::derive_ipc("src/client/chain_notify.rs").unwrap();
-- }
--diff --git a/ipc/tests/build.rs b/ipc/tests/build.rs
--index 688d139..c7626e3 100644
----- a/ipc/tests/build.rs
--+++ b/ipc/tests/build.rs
--@@ -14,11 +14,5 @@
+- [dependencies]
+-diff --git a/db/Cargo.toml b/db/Cargo.toml
+-index c7cbba2..e42e7ab 100644
+---- a/db/Cargo.toml
+-+++ b/db/Cargo.toml
+-@@ -8,7 +8,6 @@ authors = ["Ethcore <admin@ethcore.io>"]
+- build = "build.rs"
+- 
+- [build-dependencies]
+--ethcore-ipc-codegen = { path = "../ipc/codegen" }
+- 
+- [dependencies]
+- clippy = { version = "0.0.85", optional = true}
+-diff --git a/db/build.rs b/db/build.rs
+-index 239185d..c4dfac8 100644
+---- a/db/build.rs
+-+++ b/db/build.rs
+-@@ -14,25 +14,9 @@
 - // You should have received a copy of the GNU General Public License
 - // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 - 
 --extern crate ethcore_ipc_codegen as codegen;
---
+- 
+- use std::env;
+- use std::path::Path;
+- 
 - pub fn main() {
---	codegen::derive_ipc("nested.rs.in").unwrap();
---	codegen::derive_ipc("service.rs.in").unwrap();
---	codegen::derive_ipc("with_attrs.rs.in").unwrap();
---	codegen::derive_binary("binary.rs.in").unwrap();
-- }
--diff --git a/stratum/build.rs b/stratum/build.rs
--index 61fa509..0bce714 100644
----- a/stratum/build.rs
--+++ b/stratum/build.rs
--@@ -14,8 +14,6 @@
-- // You should have received a copy of the GNU General Public License
-- // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
-- 
---extern crate ethcore_ipc_codegen;
-- 
-- fn main() {
---	ethcore_ipc_codegen::derive_ipc("src/traits.rs").unwrap();
-- }
--diff --git a/sync/build.rs b/sync/build.rs
--index cdb717e..3de8973 100644
----- a/sync/build.rs
--+++ b/sync/build.rs
--@@ -14,8 +14,5 @@
-- // You should have received a copy of the GNU General Public License
-- // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
-- 
---extern crate ethcore_ipc_codegen;
+--	let out_dir = env::var_os("OUT_DIR").unwrap();
 --
-- fn main() {
---	ethcore_ipc_codegen::derive_ipc("src/api.rs").unwrap();
+--	// ipc pass
+--	{
+--		let src = Path::new("src/lib.rs.in");
+--		let dst = Path::new(&out_dir).join("lib.intermediate.rs.in");
+--		codegen::expand(&src, &dst);
+--	}
+--
+--	// binary serialization pass
+--	{
+--		let src = Path::new(&out_dir).join("lib.intermediate.rs.in");
+--		let dst = Path::new(&out_dir).join("lib.rs");
+--		codegen::expand(&src, &dst);
+--	}
 - }
+-diff --git a/ethcore/Cargo.toml b/ethcore/Cargo.toml
+-index fe6a682..fcca139 100644
+---- a/ethcore/Cargo.toml
+-+++ b/ethcore/Cargo.toml
+-@@ -8,7 +8,6 @@ authors = ["Ethcore <admin@ethcore.io>"]
+- build = "build.rs"
+- 
+- [build-dependencies]
+--"ethcore-ipc-codegen" = { path = "../ipc/codegen" }
+- 
+- [dependencies]
+- log = "0.3"
+-diff --git a/no-ipc.patch b/no-ipc.patch
+-index 8c24424..e69de29 100644
+---- a/no-ipc.patch
+-+++ b/no-ipc.patch
+-@@ -1,71 +0,0 @@
+--diff --git a/Cargo.toml b/Cargo.toml
+--index 021e7f3..24b031d 100644
+----- a/Cargo.toml
+--+++ b/Cargo.toml
+--@@ -58,7 +58,7 @@ version = "0.9"
+-- default-features = false
+-- 
+-- [features]
+---default = ["ui", "use-precompiled-js", "ipc"]
+--+default = ["ui", "use-precompiled-js"]
+-- ui = ["dapps", "ethcore-signer/ui"]
+-- use-precompiled-js = ["ethcore-dapps/use-precompiled-js", "ethcore-signer/use-precompiled-js"]
+-- dapps = ["ethcore-dapps"]
+--diff --git a/ethcore/build.rs b/ethcore/build.rs
+--index b839557..3de8973 100644
+----- a/ethcore/build.rs
+--+++ b/ethcore/build.rs
+--@@ -14,11 +14,5 @@
+-- // You should have received a copy of the GNU General Public License
+-- // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+-- 
+---extern crate ethcore_ipc_codegen;
+---
+-- fn main() {
+---	ethcore_ipc_codegen::derive_binary("src/types/mod.rs.in").unwrap();
+---	ethcore_ipc_codegen::derive_ipc("src/client/traits.rs").unwrap();
+---	ethcore_ipc_codegen::derive_ipc("src/snapshot/snapshot_service_trait.rs").unwrap();
+---	ethcore_ipc_codegen::derive_ipc("src/client/chain_notify.rs").unwrap();
+-- }
+--diff --git a/ipc/tests/build.rs b/ipc/tests/build.rs
+--index 688d139..c7626e3 100644
+----- a/ipc/tests/build.rs
+--+++ b/ipc/tests/build.rs
+--@@ -14,11 +14,5 @@
+-- // You should have received a copy of the GNU General Public License
+-- // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+-- 
+---extern crate ethcore_ipc_codegen as codegen;
+---
+-- pub fn main() {
+---	codegen::derive_ipc("nested.rs.in").unwrap();
+---	codegen::derive_ipc("service.rs.in").unwrap();
+---	codegen::derive_ipc("with_attrs.rs.in").unwrap();
+---	codegen::derive_binary("binary.rs.in").unwrap();
+-- }
+--diff --git a/stratum/build.rs b/stratum/build.rs
+--index 61fa509..0bce714 100644
+----- a/stratum/build.rs
+--+++ b/stratum/build.rs
+--@@ -14,8 +14,6 @@
+-- // You should have received a copy of the GNU General Public License
+-- // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+-- 
+---extern crate ethcore_ipc_codegen;
+-- 
+-- fn main() {
+---	ethcore_ipc_codegen::derive_ipc("src/traits.rs").unwrap();
+-- }
+--diff --git a/sync/build.rs b/sync/build.rs
+--index cdb717e..3de8973 100644
+----- a/sync/build.rs
+--+++ b/sync/build.rs
+--@@ -14,8 +14,5 @@
+-- // You should have received a copy of the GNU General Public License
+-- // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+-- 
+---extern crate ethcore_ipc_codegen;
+---
+-- fn main() {
+---	ethcore_ipc_codegen::derive_ipc("src/api.rs").unwrap();
+-- }
+-diff --git a/sync/Cargo.toml b/sync/Cargo.toml
+-index a73077c..13359d6 100644
+---- a/sync/Cargo.toml
+-+++ b/sync/Cargo.toml
+-@@ -9,7 +9,6 @@ build = "build.rs"
+- [lib]
+- 
+- [build-dependencies]
+--ethcore-ipc-codegen = { path = "../ipc/codegen" }
+- 
+- [dependencies]
+- ethcore-util = { path = "../util" }
 diff --git a/sync/Cargo.toml b/sync/Cargo.toml
 index a73077c..13359d6 100644
 --- a/sync/Cargo.toml
@@ -152,3 +674,16 @@ index a73077c..13359d6 100644
  
  [dependencies]
  ethcore-util = { path = "../util" }
+diff --git a/sync/build.rs b/sync/build.rs
+index cdb717e..3de8973 100644
+--- a/sync/build.rs
++++ b/sync/build.rs
+@@ -14,8 +14,5 @@
+ // You should have received a copy of the GNU General Public License
+ // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+ 
+-extern crate ethcore_ipc_codegen;
+-
+ fn main() {
+-	ethcore_ipc_codegen::derive_ipc("src/api.rs").unwrap();
+ }
