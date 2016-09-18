@@ -14,25 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
-extern crate ethcore_ipc_codegen as codegen;
 
 use std::env;
 use std::path::Path;
 
 pub fn main() {
-	let out_dir = env::var_os("OUT_DIR").unwrap();
-
-	// ipc pass
-	{
-		let src = Path::new("src/lib.rs.in");
-		let dst = Path::new(&out_dir).join("lib.intermediate.rs.in");
-		codegen::expand(&src, &dst);
-	}
-
-	// binary serialization pass
-	{
-		let src = Path::new(&out_dir).join("lib.intermediate.rs.in");
-		let dst = Path::new(&out_dir).join("lib.rs");
-		codegen::expand(&src, &dst);
-	}
 }

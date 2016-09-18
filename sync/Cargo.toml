@@ -9,7 +9,6 @@ build = "build.rs"
 [lib]
 
 [build-dependencies]
-ethcore-ipc-codegen = { path = "../ipc/codegen" }
 
 [dependencies]
 ethcore-util = { path = "../util" }

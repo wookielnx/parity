@@ -33,14 +33,13 @@ use service::{HypervisorService, IpcModuleId};
 use std::process::{Command,Child};
 use std::collections::HashMap;
 
-pub use service::{HypervisorServiceClient, ControlService, CLIENT_MODULE_ID, SYNC_MODULE_ID};
+pub use service::{ControlService, CLIENT_MODULE_ID, SYNC_MODULE_ID};
 
 pub type BinaryId = &'static str;
 
 pub struct Hypervisor {
 	ipc_addr: String,
 	service: Arc<HypervisorService>,
-	ipc_worker: RwLock<nanoipc::Worker<HypervisorService>>,
 	processes: RwLock<HashMap<IpcModuleId, Child>>,
 	modules: HashMap<IpcModuleId, BootArgs>,
 	pub io_path: String,
@@ -99,16 +98,7 @@ impl Hypervisor {
 	/// Starts with the specified address for the ipc listener and
 	/// the specified list of modules in form of created service
 	pub fn with_url(addr: &str) -> Hypervisor {
-		let service = HypervisorService::new();
-		let worker = nanoipc::Worker::new(&service);
-		Hypervisor{
-			ipc_addr: addr.to_owned(),
-			service: service,
-			ipc_worker: RwLock::new(worker),
-			processes: RwLock::new(HashMap::new()),
-			modules: HashMap::new(),
-			io_path: "/tmp".to_owned(),
-		}
+		unimplemented!()
 	}
 
 	/// Since one binary can host multiple modules
@@ -119,12 +109,6 @@ impl Hypervisor {
 
 	/// Creates IPC listener and starts all binaries
 	pub fn start(&self) {
-		let mut worker = self.ipc_worker.write().unwrap();
-		worker.add_reqrep(&self.ipc_addr).unwrap_or_else(|e| panic!("Hypervisor ipc worker can not start - critical! ({:?})", e));
-
-		for module_id in self.service.module_ids() {
-			self.start_module(module_id);
-		}
 	}
 
 	/// Start binary for the specified module
@@ -180,18 +164,10 @@ impl Hypervisor {
 
 	/// Waits for every required module to check in
 	pub fn wait_for_startup(&self) {
-		let mut worker = self.ipc_worker.write().unwrap();
-		while !self.modules_ready() {
-			worker.poll()
-		}
 	}
 
 	/// Waits for every required module to check in
 	pub fn wait_for_shutdown(&self) {
-		let mut worker = self.ipc_worker.write().unwrap();
-		while !self.modules_shutdown() {
-			worker.poll()
-		}
 	}
 
 	/// Shutdown the ipc and all managed child processes
@@ -227,29 +203,5 @@ mod tests {
 
 		let hypervisor = Hypervisor::with_url(url).local_module(test_module_id);
 		assert_eq!(false, hypervisor.modules_ready());
-	}
-
-	#[test]
-	fn can_wait_for_startup() {
-		let url = "ipc:///tmp/test-parity-hypervisor-20.ipc";
-		let test_module_id = 8080u64;
-
-		let hypervisor_ready = Arc::new(AtomicBool::new(false));
-		let hypervisor_ready_local = hypervisor_ready.clone();
-
-		::std::thread::spawn(move || {
-			while !hypervisor_ready.load(Ordering::Relaxed) { }
-
-			let client = nanoipc::fast_client::<HypervisorServiceClient<_>>(url).unwrap();
-			client.handshake().unwrap();
-			client.module_ready(test_module_id);
-		});
-
-		let hypervisor = Hypervisor::with_url(url).local_module(test_module_id);
-		hypervisor.start();
-		hypervisor_ready_local.store(true, Ordering::Relaxed);
-		hypervisor.wait_for_startup();
-
-		assert_eq!(true, hypervisor.modules_ready());
 	}
 }

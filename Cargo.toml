@@ -8,8 +8,6 @@ build = "build.rs"
 
 [build-dependencies]
 rustc_version = "0.1"
-ethcore-ipc-codegen = { path = "ipc/codegen" }
-ethcore-ipc-tests = { path = "ipc/tests" }
 
 [dependencies]
 log = "0.3"
@@ -58,7 +56,7 @@ version = "0.9"
 default-features = false
 
 [features]
-default = ["ui", "use-precompiled-js", "ipc"]
+default = ["ui", "use-precompiled-js"]
 ui = ["dapps", "ethcore-signer/ui"]
 use-precompiled-js = ["ethcore-dapps/use-precompiled-js", "ethcore-signer/use-precompiled-js"]
 dapps = ["ethcore-dapps"]

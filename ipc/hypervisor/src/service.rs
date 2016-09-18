@@ -14,7 +14,105 @@
 // You should have received a copy of the GNU General Public License
 // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Parity interprocess hypervisor IPC service
-#![allow(dead_code, unused_assignments, unused_variables)] // codegen issues
+use std::sync::{RwLock,Arc};
+use ipc::IpcConfig;
+use std::collections::HashMap;
+use nanoipc;
 
-include!(concat!(env!("OUT_DIR"), "/service.rs.in"));
+pub type IpcModuleId = u64;
+
+/// Blockhain database module id
+pub const CLIENT_MODULE_ID: IpcModuleId = 2000;
+
+/// Sync module id
+pub const SYNC_MODULE_ID: IpcModuleId = 2100;
+
+/// IPC service that handles module management
+pub struct HypervisorService {
+	modules: RwLock<HashMap<IpcModuleId, ModuleState>>,
+}
+
+#[derive(Default)]
+pub struct ModuleState {
+	started: bool,
+	control_url: String,
+	shutdown: bool,
+}
+
+
+pub trait ControlService {
+	fn shutdown(&self) -> bool;
+}
+
+impl HypervisorService {
+	// return type for making method synchronous
+	fn module_ready(&self, module_id: u64, control_url: String) -> bool {
+		let mut modules = self.modules.write().unwrap();
+		modules.get_mut(&module_id).map(|mut module| {
+			module.started = true;
+			module.control_url = control_url;
+		});
+		trace!(target: "hypervisor", "Module ready: {}", module_id);
+		true
+	}
+
+	// return type for making method synchronous
+	fn module_shutdown(&self, module_id: u64) -> bool {
+		let mut modules = self.modules.write().unwrap();
+		modules.get_mut(&module_id).map(|mut module| {
+			module.shutdown = true;
+		});
+		trace!(target: "hypervisor", "Module shutdown: {}", module_id);
+		true
+	}
+}
+
+impl HypervisorService {
+	/// New service with the default list of modules
+	pub fn new() -> Arc<HypervisorService> {
+		HypervisorService::with_modules(vec![])
+	}
+
+	/// New service with list of modules that will report for being ready
+	pub fn with_modules(module_ids: Vec<IpcModuleId>) -> Arc<HypervisorService> {
+		let mut modules = HashMap::new();
+		for module_id in module_ids {
+			modules.insert(module_id, ModuleState::default());
+		}
+		Arc::new(HypervisorService {
+			modules: RwLock::new(modules),
+		})
+	}
+
+	/// Add the module to the check-list
+	pub fn add_module(&self, module_id: IpcModuleId) {
+		self.modules.write().unwrap().insert(module_id, ModuleState::default());
+	}
+
+	/// Number of modules still being waited for check-in
+	pub fn unchecked_count(&self) -> usize {
+		self.modules.read().unwrap().iter().filter(|&(_, module)| !module.started).count()
+	}
+
+	/// List of all modules within this service
+	pub fn module_ids(&self) -> Vec<IpcModuleId> {
+		self.modules.read().unwrap().iter().map(|(module_id, _)| module_id).cloned().collect()
+	}
+
+	/// Number of modules started and running
+	pub fn running_count(&self) -> usize {
+		self.modules.read().unwrap().iter().filter(|&(_, module)| module.started && !module.shutdown).count()
+	}
+
+	pub fn send_shutdown(&self, module_id: IpcModuleId) {
+		let modules = self.modules.read().unwrap();
+		modules.get(&module_id).map(|module| {
+			trace!(target: "hypervisor", "Sending shutdown to {}({})", module_id, &module.control_url);
+			trace!(target: "hypervisor", "Sent shutdown to {}", module_id);
+		});
+	}
+}
+
+impl ::ipc::IpcConfig for HypervisorService {}
+
+impl ::ipc::IpcConfig for ControlService {}
