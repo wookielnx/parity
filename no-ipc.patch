@@ -1,0 +1,154 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 021e7f3..4906c2c 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -8,7 +8,6 @@ build = "build.rs"
+ 
+ [build-dependencies]
+ rustc_version = "0.1"
+-ethcore-ipc-codegen = { path = "ipc/codegen" }
+ ethcore-ipc-tests = { path = "ipc/tests" }
+ 
+ [dependencies]
+diff --git a/db/Cargo.toml b/db/Cargo.toml
+index c7cbba2..e42e7ab 100644
+--- a/db/Cargo.toml
++++ b/db/Cargo.toml
+@@ -8,7 +8,6 @@ authors = ["Ethcore <admin@ethcore.io>"]
+ build = "build.rs"
+ 
+ [build-dependencies]
+-ethcore-ipc-codegen = { path = "../ipc/codegen" }
+ 
+ [dependencies]
+ clippy = { version = "0.0.85", optional = true}
+diff --git a/db/build.rs b/db/build.rs
+index 239185d..c4dfac8 100644
+--- a/db/build.rs
++++ b/db/build.rs
+@@ -14,25 +14,9 @@
+ // You should have received a copy of the GNU General Public License
+ // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+ 
+-extern crate ethcore_ipc_codegen as codegen;
+ 
+ use std::env;
+ use std::path::Path;
+ 
+ pub fn main() {
+-	let out_dir = env::var_os("OUT_DIR").unwrap();
+-
+-	// ipc pass
+-	{
+-		let src = Path::new("src/lib.rs.in");
+-		let dst = Path::new(&out_dir).join("lib.intermediate.rs.in");
+-		codegen::expand(&src, &dst);
+-	}
+-
+-	// binary serialization pass
+-	{
+-		let src = Path::new(&out_dir).join("lib.intermediate.rs.in");
+-		let dst = Path::new(&out_dir).join("lib.rs");
+-		codegen::expand(&src, &dst);
+-	}
+ }
+diff --git a/ethcore/Cargo.toml b/ethcore/Cargo.toml
+index fe6a682..fcca139 100644
+--- a/ethcore/Cargo.toml
++++ b/ethcore/Cargo.toml
+@@ -8,7 +8,6 @@ authors = ["Ethcore <admin@ethcore.io>"]
+ build = "build.rs"
+ 
+ [build-dependencies]
+-"ethcore-ipc-codegen" = { path = "../ipc/codegen" }
+ 
+ [dependencies]
+ log = "0.3"
+diff --git a/no-ipc.patch b/no-ipc.patch
+index 8c24424..e69de29 100644
+--- a/no-ipc.patch
++++ b/no-ipc.patch
+@@ -1,71 +0,0 @@
+-diff --git a/Cargo.toml b/Cargo.toml
+-index 021e7f3..24b031d 100644
+---- a/Cargo.toml
+-+++ b/Cargo.toml
+-@@ -58,7 +58,7 @@ version = "0.9"
+- default-features = false
+- 
+- [features]
+--default = ["ui", "use-precompiled-js", "ipc"]
+-+default = ["ui", "use-precompiled-js"]
+- ui = ["dapps", "ethcore-signer/ui"]
+- use-precompiled-js = ["ethcore-dapps/use-precompiled-js", "ethcore-signer/use-precompiled-js"]
+- dapps = ["ethcore-dapps"]
+-diff --git a/ethcore/build.rs b/ethcore/build.rs
+-index b839557..3de8973 100644
+---- a/ethcore/build.rs
+-+++ b/ethcore/build.rs
+-@@ -14,11 +14,5 @@
+- // You should have received a copy of the GNU General Public License
+- // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+- 
+--extern crate ethcore_ipc_codegen;
+--
+- fn main() {
+--	ethcore_ipc_codegen::derive_binary("src/types/mod.rs.in").unwrap();
+--	ethcore_ipc_codegen::derive_ipc("src/client/traits.rs").unwrap();
+--	ethcore_ipc_codegen::derive_ipc("src/snapshot/snapshot_service_trait.rs").unwrap();
+--	ethcore_ipc_codegen::derive_ipc("src/client/chain_notify.rs").unwrap();
+- }
+-diff --git a/ipc/tests/build.rs b/ipc/tests/build.rs
+-index 688d139..c7626e3 100644
+---- a/ipc/tests/build.rs
+-+++ b/ipc/tests/build.rs
+-@@ -14,11 +14,5 @@
+- // You should have received a copy of the GNU General Public License
+- // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+- 
+--extern crate ethcore_ipc_codegen as codegen;
+--
+- pub fn main() {
+--	codegen::derive_ipc("nested.rs.in").unwrap();
+--	codegen::derive_ipc("service.rs.in").unwrap();
+--	codegen::derive_ipc("with_attrs.rs.in").unwrap();
+--	codegen::derive_binary("binary.rs.in").unwrap();
+- }
+-diff --git a/stratum/build.rs b/stratum/build.rs
+-index 61fa509..0bce714 100644
+---- a/stratum/build.rs
+-+++ b/stratum/build.rs
+-@@ -14,8 +14,6 @@
+- // You should have received a copy of the GNU General Public License
+- // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+- 
+--extern crate ethcore_ipc_codegen;
+- 
+- fn main() {
+--	ethcore_ipc_codegen::derive_ipc("src/traits.rs").unwrap();
+- }
+-diff --git a/sync/build.rs b/sync/build.rs
+-index cdb717e..3de8973 100644
+---- a/sync/build.rs
+-+++ b/sync/build.rs
+-@@ -14,8 +14,5 @@
+- // You should have received a copy of the GNU General Public License
+- // along with Parity.  If not, see <http://www.gnu.org/licenses/>.
+- 
+--extern crate ethcore_ipc_codegen;
+--
+- fn main() {
+--	ethcore_ipc_codegen::derive_ipc("src/api.rs").unwrap();
+- }
+diff --git a/sync/Cargo.toml b/sync/Cargo.toml
+index a73077c..13359d6 100644
+--- a/sync/Cargo.toml
++++ b/sync/Cargo.toml
+@@ -9,7 +9,6 @@ build = "build.rs"
+ [lib]
+ 
+ [build-dependencies]
+-ethcore-ipc-codegen = { path = "../ipc/codegen" }
+ 
+ [dependencies]
+ ethcore-util = { path = "../util" }
