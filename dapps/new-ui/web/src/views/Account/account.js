@@ -122,14 +122,14 @@ class Account extends Component {
 
     const { address } = this.props.params;
     const { accounts, balances } = this.props;
-    const account = accounts[address];
-    const balance = balances[address];
+    const account = (accounts || {})[address];
+    const balance = (balances || {})[address];
 
     return (
       <Transfer
         account={ account }
         balance={ balance }
-        balances={ balances }
+        balances={ balances || {} }
         onClose={ this.onTransferClose } />
     );
   }
@@ -163,7 +163,7 @@ function mapStateToProps (state) {
   return {
     isTest,
     accounts,
-    balances
+    balances: balances || {}
   };
 }
 

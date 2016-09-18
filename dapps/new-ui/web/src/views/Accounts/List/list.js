@@ -51,8 +51,9 @@ export default class List extends Component {
     }
 
     return Object.keys(accounts).map((address, idx) => {
+      let balances2 = balances || {};
       const account = accounts[address];
-      const balance = balances[address];
+      const balance = balances2[address] || 0;
 
       return (
         <div

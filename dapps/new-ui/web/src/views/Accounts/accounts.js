@@ -120,7 +120,7 @@ function mapStateToProps (state) {
   return {
     accounts,
     hasAccounts,
-    balances
+    balances: balances || {}
   };
 }
 

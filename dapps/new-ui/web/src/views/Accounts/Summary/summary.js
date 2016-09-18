@@ -52,7 +52,7 @@ export default class Summary extends Component {
           title={ <Link to={ viewLink }>{ account.name || 'Unnamed' }</Link> }
           byline={ account.address } />
         <Balance
-          balance={ balance } />
+          balance={ balance || 0 } />
         { children }
       </Container>
     );
