@@ -107,8 +107,6 @@ mod snapshot;
 mod run;
 #[cfg(feature="ipc")]
 mod sync;
-#[cfg(feature="ipc")]
-mod boot;
 
 #[cfg(feature="stratum")]
 mod stratum;
