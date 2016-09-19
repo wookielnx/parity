@@ -43,7 +43,7 @@ ethkey = { path = "ethkey" }
 rlp = { path = "util/rlp" }
 json-ipc-server = { git = "https://github.com/ethcore/json-ipc-server.git" }
 ethcore-dapps = { path = "dapps", optional = true }
-clippy = { version = "0.0.85", optional = true}
+clippy = { version = "0.0.90", optional = true}
 ethcore-stratum = { path = "stratum" }
 workshop-builtins = { path = "workshop_builtins" }
 

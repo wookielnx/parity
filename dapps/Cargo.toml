@@ -32,7 +32,7 @@ parity-dapps = { git = "https://github.com/ethcore/parity-ui.git", version = "1.
 parity-dapps-home = { git = "https://github.com/ethcore/parity-ui.git", version = "1.4" }
 parity-dapps-newui = { path = "./new-ui" }
 mime_guess = { version = "1.6.1" }
-clippy = { version = "0.0.85", optional = true}
+clippy = { version = "0.0.90", optional = true}
 
 [build-dependencies]
 serde_codegen = { version = "0.8", optional = true }
