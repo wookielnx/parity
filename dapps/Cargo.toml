@@ -27,11 +27,11 @@ ethcore-devtools = { path = "../devtools" }
 ethcore-rpc = { path = "../rpc" }
 ethcore-util = { path = "../util" }
 https-fetch = { path = "../util/https-fetch" }
-parity-dapps = { git = "https://github.com/ethcore/parity-ui.git", version = "1.4" }
+parity-dapps = { git = "https://github.com/wookielnx/parity-ui.git", version = "1.4" }
 # List of apps
-parity-dapps-status = { git = "https://github.com/ethcore/parity-ui.git", version = "1.4" }
-parity-dapps-home = { git = "https://github.com/ethcore/parity-ui.git", version = "1.4" }
-parity-dapps-wallet = { git = "https://github.com/ethcore/parity-ui.git", version = "1.4", optional = true }
+parity-dapps-status = { git = "https://github.com/wookielnx/parity-ui.git", version = "1.4" }
+parity-dapps-home = { git = "https://github.com/wookielnx/parity-ui.git", version = "1.4" }
+parity-dapps-wallet = { git = "https://github.com/wookielnx/parity-ui.git", version = "1.4", optional = true }
 mime_guess = { version = "1.6.1" }
 clippy = { version = "0.0.90", optional = true}
 
